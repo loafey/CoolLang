@@ -68,6 +68,7 @@ executable CoolLang
                       Lang.Skel
                       Lang.Lex
                       Lang.Par
+                      TypeChecker.TypeChecker
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
