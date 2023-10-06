@@ -32,7 +32,7 @@ separator Branch ";" ;
 
 PLit.   Pattern1 ::= Lit ;
 PCatch. Pattern1 ::= "_" ;
-PInj.   Pattern1 ::= Ident [Pattern1] ;
+PInj.   Pattern ::= Ident [Pattern1] ;
 
 coercions Pattern 1 ;
 separator Pattern1 " " ;
