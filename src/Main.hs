@@ -1,7 +1,7 @@
 module Main where
 
 import           Control.Monad      (when)
-import           Lang.Par           (myLexer, pExpr)
+import           Lang.Par           (myLexer, pProgram)
 import           Lang.Print         (printTree)
 import           System.Environment (getArgs)
 import           System.IO          (IOMode (ReadMode), hGetContents, openFile)
@@ -14,6 +14,6 @@ main = do
 
     file <- openFile filePath ReadMode
     fileContent <- hGetContents file
-    case pExpr . myLexer $ fileContent of
+    case pProgram . myLexer $ fileContent of
         Left ok -> putStrLn $ printTree ok
         Right e -> print e

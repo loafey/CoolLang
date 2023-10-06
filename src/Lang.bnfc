@@ -1,8 +1,9 @@
+Program. Program ::= Expr ;
 
 EVar. Expr2 ::= Ident ;
 ELit. Expr2 ::= Integer ;
 EApp. Expr1 ::= Expr1 Expr2 ;
-ELet. Expr ::= "let" String "=" Expr "in" Expr1 ;
-ELam. Expr ::= "\\" String "->" Expr ;
+ELet. Expr ::= "let" Ident "=" Expr "in" Expr1 ;
+ELam. Expr ::= "\\" Ident "->" Expr ;
 
 coercions Expr 3 ;
