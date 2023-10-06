@@ -1,7 +1,24 @@
-Program. Program ::= [Bind] ;
+Program. Program ::= [Def] ;
+
+terminator nonempty Def ";" ;
+
+DSig. Def ::= Sig ;
+DBind. Def ::= Bind ;
 
 Bind. Bind ::= "def" Ident "=" Expr ;
-terminator nonempty Bind ";" ;
+Sig. Sig ::= Ident ":" Type ;
+
+-------------------------------------------------------------------------------
+-- * Type
+-------------------------------------------------------------------------------
+
+TVar. Type2 ::= TVar ;
+TApp. Type1 ::= Type1 Type2 ;
+TFun. Type ::= Type1 "->" Type ;
+
+MkTVar. TVar ::= Ident ;
+
+coercions Type 2 ;
 
 -------------------------------------------------------------------------------
 -- * Pattern matching
@@ -20,6 +37,7 @@ separator Pattern1 " " ;
 -------------------------------------------------------------------------------
 -- * Expressions
 -------------------------------------------------------------------------------
+
 -- Let EPat act as variable and constructor
 EPat. Expr2 ::= Ident ;
 ELit. Expr2 ::= Lit ;
