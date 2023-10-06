@@ -3,10 +3,31 @@ Program. Program ::= [Bind] ;
 Bind. Bind ::= "def" Ident "=" Expr ;
 terminator nonempty Bind ";" ;
 
-EVar. Expr2 ::= Ident ;
-ELit. Expr2 ::= Integer ;
+-------------------------------------------------------------------------------
+-- * Pattern matching
+-------------------------------------------------------------------------------
+
+Branch. Branch ::= Pattern "=>" Expr ;
+
+PVar. Pattern
+
+-------------------------------------------------------------------------------
+-- * Expressions
+-------------------------------------------------------------------------------
+-- Let EPat act as variable and constructor
+EPat. Expr2 ::= Ident ;
+ELit. Expr2 ::= Lit ;
 EApp. Expr1 ::= Expr1 Expr2 ;
 ELet. Expr ::= "let" Ident "=" Expr "in" Expr1 ;
 ELam. Expr ::= "\\" Ident "->" Expr ;
+ECase. Expr1 ::= "case" Expr "of" "{" [Branch] "}" ;
 
 coercions Expr 3 ;
+
+-------------------------------------------------------------------------------
+-- * Literals
+-------------------------------------------------------------------------------
+
+LInt.    Lit ::= Integer ;
+LChar.   Lit ::= Char ;
+LString. Lit ::= String ;
