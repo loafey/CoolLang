@@ -1,4 +1,7 @@
-Program. Program ::= Expr ;
+Program. Program ::= [Bind] ;
+
+Bind. Bind ::= "def" Ident "=" Expr ;
+terminator nonempty Bind ";" ;
 
 EVar. Expr2 ::= Ident ;
 ELit. Expr2 ::= Integer ;
