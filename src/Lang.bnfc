@@ -1,3 +1,8 @@
-EPlus. Expr   ::= Expr "+" Number ;
-ENum.  Expr   ::= Number ;
-NOne.  Number ::= "1" ;
+
+EVar. Expr2 ::= Ident ;
+ELit. Expr2 ::= Integer ;
+EApp. Expr1 ::= Expr1 Expr2 ;
+ELet. Expr ::= "let" String "=" Expr "in" Expr1 ;
+ELam. Expr ::= "\\" String "->" Expr ;
+
+coercions Expr 3 ;
