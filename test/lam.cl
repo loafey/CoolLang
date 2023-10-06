@@ -1,2 +1,1 @@
-def main = \f -> \x -> f x;
-def cool = f x;
+def main = print 5;

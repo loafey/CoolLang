@@ -70,6 +70,7 @@ executable CoolLang
                       Lang.Par
                       TypeChecker.TypeChecker
                       Interpreter.Interpreter
+                      ErrorExp
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
