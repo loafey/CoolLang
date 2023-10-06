@@ -71,6 +71,8 @@ executable CoolLang
                       TypeChecker.TypeChecker
                       Interpreter.Interpreter
                       ErrorExp
+                      Renamer.Renamer
+                      Error
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

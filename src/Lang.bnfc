@@ -1,12 +1,23 @@
 Program. Program ::= [Def] ;
 
-terminator nonempty Def ";" ;
+terminator Def ";" ;
 
 DSig. Def ::= Sig ;
 DBind. Def ::= Bind ;
 
-Bind. Bind ::= "def" Ident "=" Expr ;
-Sig. Sig ::= Ident ":" Type ;
+Bind. Bind ::= Ident "=" Expr ;
+Sig. Sig   ::= Ident ":" Type ;
+
+-------------------------------------------------------------------------------
+-- * Data Types
+-------------------------------------------------------------------------------
+
+Data. Data ::= "data" Type "=" "{" [Inj] "}" ;
+
+Inj. Inj ::= Ident [Type] ;
+
+separator Inj "|" ;
+separator Type " " ;
 
 -------------------------------------------------------------------------------
 -- * Type
@@ -21,33 +32,35 @@ MkTVar. TVar ::= Ident ;
 
 separator TVar " " ;
 
-coercions Type 2 ;
+coercions Type 3 ;
 
 -------------------------------------------------------------------------------
 -- * Pattern matching
 -------------------------------------------------------------------------------
 
 Branch. Branch ::= Pattern "=>" Expr ;
-separator Branch ";" ;
+terminator Branch ";" ;
 
 PLit.   Pattern1 ::= Lit ;
 PCatch. Pattern1 ::= "_" ;
+PVar.   Pattern1 ::= Ident ;
 PInj.   Pattern ::= Ident [Pattern1] ;
 
 coercions Pattern 1 ;
-separator Pattern1 " " ;
+separator nonempty Pattern1 " " ;
 
 -------------------------------------------------------------------------------
 -- * Expressions
 -------------------------------------------------------------------------------
 
 -- Let EPat act as variable and constructor
-EPat. Expr2 ::= Ident ;
-ELit. Expr2 ::= Lit ;
-EApp. Expr1 ::= Expr1 Expr2 ;
-ELet. Expr ::= "let" Ident "=" Expr "in" Expr1 ;
-ELam. Expr ::= "\\" Ident "->" Expr ;
-ECase. Expr1 ::= "case" Expr "of" "{" [Branch] "}" ;
+EPat.         Expr2 ::= Ident ;
+ELit.         Expr2 ::= Lit ;
+EApp.         Expr1 ::= Expr1 Expr2 ;
+EAppExplicit. Expr1 ::= Expr1 "{" Type "}" Expr2 ;
+ECase.        Expr1 ::= "case" Expr "of" "{" [Branch] "}" ;
+ELet.         Expr ::= "let" Ident "=" Expr "in" Expr1 ;
+ELam.         Expr ::= "\\" Ident "->" Expr ;
 
 coercions Expr 3 ;
 
@@ -58,3 +71,10 @@ coercions Expr 3 ;
 LInt.    Lit ::= Integer ;
 LChar.   Lit ::= Char ;
 LString. Lit ::= String ;
+
+-------------------------------------------------------------------------------
+-- * Aux
+-------------------------------------------------------------------------------
+
+comment "#" ;
+comment "//" "\\\\" ;

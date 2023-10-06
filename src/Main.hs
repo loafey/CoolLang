@@ -18,4 +18,9 @@ main = do
     fileContent <- hGetContents file
     case pProgram . myLexer $ fileContent of
         Left e   -> print e
-        Right ok -> putStrLn (printTree ok) >> interpret ok
+        Right ok -> do
+            putStrLn " -- RAW -- "
+            print ok
+            putStrLn " -- PRETTY -- "
+            putStrLn (printTree ok)
+            interpret ok
