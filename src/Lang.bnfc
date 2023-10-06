@@ -8,8 +8,14 @@ terminator nonempty Bind ";" ;
 -------------------------------------------------------------------------------
 
 Branch. Branch ::= Pattern "=>" Expr ;
+separator Branch ";" ;
 
-PVar. Pattern
+PLit.   Pattern1 ::= Lit ;
+PCatch. Pattern1 ::= "_" ;
+PInj.   Pattern1 ::= Ident [Pattern1] ;
+
+coercions Pattern 1 ;
+separator Pattern1 " " ;
 
 -------------------------------------------------------------------------------
 -- * Expressions
