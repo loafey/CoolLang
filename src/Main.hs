@@ -1,10 +1,12 @@
 module Main where
 
-import           Control.Monad      (when)
-import           Lang.Par           (myLexer, pProgram)
-import           Lang.Print         (printTree)
-import           System.Environment (getArgs)
-import           System.IO          (IOMode (ReadMode), hGetContents, openFile)
+import           Control.Monad           (when)
+import           Interpreter.Interpreter (interpret)
+import           Lang.Par                (myLexer, pProgram)
+import           Lang.Print              (printTree)
+import           System.Environment      (getArgs)
+import           System.IO               (IOMode (ReadMode), hGetContents,
+                                          openFile)
 
 main :: IO ()
 main = do
@@ -15,5 +17,5 @@ main = do
     file <- openFile filePath ReadMode
     fileContent <- hGetContents file
     case pProgram . myLexer $ fileContent of
-        Left ok -> putStrLn $ printTree ok
-        Right e -> print e
+        Left e   -> print e
+        Right ok -> putStrLn (printTree ok) >> interpret ok
