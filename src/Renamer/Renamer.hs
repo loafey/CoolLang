@@ -73,7 +73,9 @@ rnBaseType t = do
             ty1' <- go ty1
             ty2' <- go ty2
             pure $ TApp pos ty1' ty2'
-        ty                 -> throwError $ RnBadDataType (hasPosition ty) ty
+        -- TODO: Add the data type name that is being defined for better error message
+        TApp _ _ ty2 -> throwError $ RnBadDataType (hasPosition ty2) ty2
+        ty           -> throwError $ RnBadDataType (hasPosition ty) ty
 
 rnExpr :: Expr -> Rn Expr
 rnExpr = \case
@@ -102,12 +104,14 @@ rnPattern seen = \case
     PLit pos lit -> pure $ PLit pos lit
     PCatch pos   -> pure $ PCatch pos
     PVar pos name -> do
+        -- TODO: Add both definitions for better error message
         when (name `S.member` seen) (throwError $ RnMultiplePatternVar pos name)
         injs <- gets injections
         if name `S.member` injs
         then pure $ PVar pos name
         else PVar pos <$> newVarName name
     PInj pos name pats -> do
+        -- TODO: Add both definitions for better error message
         when (name `S.member` seen) (throwError $ RnMultiplePatternVar pos name)
         injs <- gets injections
         if name `S.member` injs
