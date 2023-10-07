@@ -70,7 +70,7 @@ executable CoolLang
                       Lang.Par
                       TypeChecker.TypeChecker
                       Interpreter.Interpreter
-                      ErrorExp
+                      Util
                       Renamer.Renamer
                       Error
 
@@ -84,10 +84,6 @@ executable CoolLang
                       array,
                       either,
                       extra
-
-
-    build-tool-depends:     alex:alex,
-                            happy:happy
 
     -- Directories containing source files.
     hs-source-dirs:   src
