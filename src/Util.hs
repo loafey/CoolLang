@@ -1,4 +1,4 @@
-module ErrorExp (whenErr, whenOk) where
+module Util (whenErr, whenOk) where
 import           Lang.ErrM (Err)
 
 whenErr :: Applicative f => Err a -> (String -> f ()) -> f ()

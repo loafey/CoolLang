@@ -7,7 +7,7 @@ import           Control.Monad.Except     (ExceptT, MonadError (throwError),
 import           Control.Monad.State.Lazy (StateT, evalStateT, gets)
 import           Data.Map                 (Map, fromList, lookup)
 import           Data.Map.Lazy            ((!))
-import           ErrorExp                 (whenErr)
+import           Util                     (whenErr)
 import           Lang.Abs                 (BNFC'Position, Bind, Bind' (Bind),
                                            Def, Def' (DBind), Expr, Expr' (..),
                                            Ident, Lit, Program,
