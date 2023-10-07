@@ -2,6 +2,8 @@ module Main where
 
 import           Control.Monad           (when)
 import           Interpreter.Interpreter (interpret)
+import           Renamer.Renamer         (rename)
+import           Error
 import           Lang.Par                (myLexer, pProgram)
 import           Lang.Print              (printTree)
 import           System.Environment      (getArgs)
@@ -23,4 +25,9 @@ main = do
             print ok
             putStrLn " -- PRETTY -- "
             putStrLn (printTree ok)
-            interpret ok
+            case rename ok of
+                Left e -> putStrLn $ showErr e
+                Right ok -> do
+                    putStrLn " -- RENAMED -- "
+                    putStrLn (printTree ok)
+                    interpret ok

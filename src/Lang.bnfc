@@ -4,6 +4,7 @@ terminator Def ";" ;
 
 DSig. Def ::= Sig ;
 DBind. Def ::= Bind ;
+DData. Def ::= Data ;
 
 Bind. Bind ::= Ident "=" Expr ;
 Sig. Sig   ::= Ident ":" Type ;
@@ -12,7 +13,7 @@ Sig. Sig   ::= Ident ":" Type ;
 -- * Data Types
 -------------------------------------------------------------------------------
 
-Data. Data ::= "data" Type "=" "{" [Inj] "}" ;
+Data. Data ::= "data" Type "=" [Inj] ;
 
 Inj. Inj ::= Ident [Type] ;
 
