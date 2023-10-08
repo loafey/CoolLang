@@ -15,6 +15,13 @@ import qualified Data.Map             as M
 import           Data.Set             (Set)
 import qualified Data.Set             as S
 import           Error
+import Debug.Trace (traceShow)
+
+-- TODO: Add data types to base types before continuing.
+-- Renamer is currently completely unusble
+
+debug :: Bool
+debug = True
 
 newtype Rn a = Rn { runRn :: ExceptT (RenameError Pos) (State Ctx) a }
     deriving (Functor, Applicative, Monad, MonadState Ctx, MonadError (RenameError Pos))
@@ -32,11 +39,33 @@ emptyCtx = Ctx 0 mempty mempty mempty mempty
 
 type Pos = BNFC'Position
 
+
 rename :: Program -> Either (RenameError Pos) Program
-rename = flip (evalState . runExceptT . runRn . rnProgram) emptyCtx
+rename prg =
+    let (prg', context) = flip runState emptyCtx . runExceptT . runRn . rnProgram $ prg
+    in if debug
+       then traceShow context prg'
+       else prg'
 
 rnProgram :: Program -> Rn Program
-rnProgram (Program pos defs) = Program pos <$> mapM rnDef defs
+rnProgram (Program pos defs) = addDecls defs >> Program pos <$> mapM rnDef defs
+
+addDecls :: [Def] -> Rn ()
+addDecls [] = pure ()
+addDecls (x:xs) = case x of
+    DBind pos bind -> do
+        addBind bind
+        addDecls xs
+    DData pos dat -> addData dat >> addDecls xs
+    DSig _ _ -> addDecls xs
+
+addData :: Data -> Rn ()
+addData (Data pos name injs)
+    = modify (\ctx -> ctx { baseTypes = S.insert name ctx.baseTypes })
+
+addBind :: Bind -> Rn ()
+addBind (Bind pos name expr)
+    = modify (\ctx -> ctx { varNames = M.insert name name ctx.varNames })
 
 rnDef :: Def -> Rn Def
 rnDef = \case
@@ -51,28 +80,10 @@ rnBind :: Bind -> Rn Bind
 rnBind (Bind pos name expr) = Bind pos name <$> rnExpr expr
 
 rnData :: Data -> Rn Data
-rnData (Data pos ty injections) = Data pos <$> rnBaseType ty <*> mapM rnInjection injections
+rnData (Data pos ty injections) = Data pos ty <$> mapM rnInjection injections
 
 rnInjection :: Inj -> Rn Inj
 rnInjection (Inj pos name tys) = modify (\ctx -> ctx { injections = S.insert name ctx.injections }) >> Inj pos name <$> mapM rnType tys
-
--- | Checks for a valid declaration of the data type as well
-rnBaseType :: Type -> Rn Type
-rnBaseType t = do
-    t' <- go t
-    modify (\ctx -> ctx { baseTypes = S.insert (rmPos t') ctx.baseTypes })
-    pure t'
-  where
-    go :: Type -> Rn Type
-    go = \case
-        TVar pos name     -> TVar pos <$> newTVarTyName name
-        TApp pos ty1 ty2@(TVar _ name)  -> do
-            ty1' <- go ty1
-            ty2' <- go ty2
-            pure $ TApp pos ty1' ty2'
-        -- TODO: Add the data type name that is being defined for better error message
-        TApp _ _ ty2 -> throwError $ RnBadDataType (hasPosition ty2) ty2
-        ty           -> throwError $ RnBadDataType (hasPosition ty) ty
 
 rnExpr :: Expr -> Rn Expr
 rnExpr = \case

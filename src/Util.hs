@@ -1,12 +1,11 @@
 module Util (
     whenErr,
     whenOk,
-    todo,
-    traceShow
+    todo
 ) where
 
-import           Debug.Trace (trace, traceShowId)
 import           Lang.ErrM   (Err)
+import           Lang.Abs
 
 whenErr :: Applicative f => Err a -> (String -> f ()) -> f ()
 whenErr (Left o) f  = f o
@@ -18,6 +17,3 @@ whenOk (Right o) f = f o
 
 todo :: a
 todo = error "TODO: Not yet implemented"
-
-traceShow :: Show a => a -> a
-traceShow = traceShowId

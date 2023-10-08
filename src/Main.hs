@@ -25,10 +25,12 @@ main = do
             print ok
             putStrLn " -- PRETTY -- "
             putStrLn (printTree ok)
-            case rename ok of
-                Left e -> putStrLn $ showErr e
-                Right ok -> do
-                    putStrLn " -- RENAMED -- "
-                    putStrLn (printTree ok)
-                    putStrLn " -- OUTPUT -- "
-                    interpret ok
+            putStrLn " -- OUTPUT -- "
+            interpret ok
+            -- case rename ok of
+            --     Left e -> putStrLn $ showErr e
+            --     Right ok -> do
+            --         putStrLn " -- RENAMED -- "
+            --         putStrLn (printTree ok)
+                    -- putStrLn " -- OUTPUT -- "
+                    -- interpret ok

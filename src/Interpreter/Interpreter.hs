@@ -17,7 +17,7 @@ import           Lang.Abs                 (BNFC'Position, Bind, Bind' (Bind),
                                            Lit' (LChar, LInt, LString), Program,
                                            Program' (Program))
 import           Prelude                  hiding (lookup)
-import           Util                     (todo, traceShow, whenErr, whenOk)
+import           Util                     (todo, whenErr, whenOk)
 
 interpret :: Program -> IO ()
 interpret p = do
