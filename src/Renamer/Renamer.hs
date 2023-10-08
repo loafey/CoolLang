@@ -1,30 +1,31 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 {-# OPTIONS_GHC -Wno-unused-matches #-}
 
 module Renamer.Renamer (rename) where
 
-import Lang.Abs
+import           Lang.Abs
 
-import Control.Monad.Except
-import Control.Monad.State
-import Data.Map (Map)
-import Data.Map qualified as M
-import Data.Set (Set)
-import qualified Data.Set as S
-import Error
-import Debug.Trace (trace, traceShow)
+import           Control.Monad        (when)
+import           Control.Monad.Except
+import           Control.Monad.State
+import           Data.Map             (Map)
+import qualified Data.Map             as M
+import           Data.Set             (Set)
+import qualified Data.Set             as S
+import           Debug.Trace          (trace, traceShow)
+import           Error
 
 newtype Rn a = Rn { runRn :: ExceptT (RenameError Pos) (State Ctx) a }
     deriving (Functor, Applicative, Monad, MonadState Ctx, MonadError (RenameError Pos))
 
 data Ctx = Ctx
-    { counter :: Int
-    , varNames :: Map Ident Ident
-    , tyNames :: Map Ident Ident -- Can't have this TVar as it also stores position
-    , baseTypes :: Set Type  -- Make sure to set the position of the type to Nothing
+    { counter    :: Int
+    , varNames   :: Map Ident Ident
+    , tyNames    :: Map Ident Ident -- Can't have this TVar as it also stores position
+    , baseTypes  :: Set Type  -- Make sure to set the position of the type to Nothing
     , injections :: Set Ident
     } deriving Show
 
