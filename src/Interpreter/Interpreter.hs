@@ -13,7 +13,7 @@ import           Lang.Abs                 (BNFC'Position, Bind, Bind' (Bind),
                                            Lit' (LChar, LInt, LString), Program,
                                            Program' (Program))
 import           Prelude                  hiding (lookup)
-import           Util                     (whenErr, whenOk)
+import           Util                     (todo, whenErr, whenOk)
 
 interpret :: Program -> IO ()
 interpret p = do
@@ -68,14 +68,14 @@ actuallyInterpret = do
 evalExpr :: Context -> Expr -> CompilerState Value
 evalExpr c e = do
     case e of
-        EPat _ i        -> return $ case lookup i c of
+        EPat _ i -> return $ case lookup i c of
             Just v -> v
             _      ->  VIdent i
-        ELit p l        -> return $ VLit l
-        EApp p l r      -> apply c p l r
-        ELet _ i e s    -> evalLet c i e s
-        ELam _ e s      -> return $ VLam e s
-        ECase p e s     -> undefined
+        ELit _ l      -> return $ VLit l
+        EApp p l r    -> apply c p l r
+        ELet _ i e' s -> evalLet c i e' s
+        ELam _ e' s   -> return $ VLam e' s
+        ECase  {}     -> todo
         EAppExplicit {} -> error "Should not exist"
 
 evalLet :: Context -> Ident -> Expr -> Expr -> CompilerState Value
