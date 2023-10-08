@@ -1,3 +1,5 @@
-id = \x -> x;
+#print = \x -> x;
+#plus  = \x -> \y -> x; 
 
-main = id 5;
+main = (\x -> \y -> x) 1 2;
+# returns "x" instead of 1
