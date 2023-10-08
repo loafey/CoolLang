@@ -79,10 +79,16 @@ evalExpr c e = do
             _      ->  VIdent i
         ELit p l        -> return $ VLit l
         EApp p l r      -> apply c p l r
-        ELet p i e s    -> undefined
+        ELet _ i e s    -> evalLet c i e s
         ELam _ e s      -> return $ VLam e s
         ECase p e s     -> undefined
         EAppExplicit {} -> error "Should not exist"
+
+evalLet :: Context -> Ident -> Expr -> Expr -> CompilerState Value
+evalLet c i e s = do
+    val <- evalExpr c e
+    let c' = insertNamed i val c
+    evalExpr c' s
 
 apply :: Context -> BNFC'Position -> Expr -> Expr -> CompilerState Value
 apply c p e1 e2 = do

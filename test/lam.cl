@@ -3,4 +3,4 @@ plus = \x -> \y -> x;
 
 id = \x -> x;
 
-main = (\x -> (\y -> y) x) 5;
+main = let p = (\y -> 10) in (\x -> p x) 5;
