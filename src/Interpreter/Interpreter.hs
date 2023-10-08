@@ -33,21 +33,15 @@ newtype InterpreterState = InterpreterState {
     }
 
 type CompilerState a = StateT InterpreterState (ExceptT String IO) a
-data Context = Context {
-        named :: Map Ident Value,
-        stack :: [Value]
+newtype Context = Context {
+        named :: Map Ident Value
     }
 emptyContext :: Context
-emptyContext = Context Map.empty []
-insert :: Value -> Context -> Context
-insert v (Context n s) =  Context n (v:s)
-pop :: Context -> Maybe (Value, Context)
-pop (Context n (s:ss)) = Just (s, Context n ss)
-pop _                  = Nothing
+emptyContext = Context Map.empty
 lookup :: Ident -> Context -> Maybe Value
-lookup i (Context n _) = Map.lookup i n
+lookup i (Context n) = Map.lookup i n
 insertNamed :: Ident -> Value -> Context -> Context
-insertNamed k v (Context n s) = Context (Map.insert k v n) s
+insertNamed k v (Context n) = Context (Map.insert k v n)
 
 data Value
     = VAbsoluteUnit
@@ -102,8 +96,7 @@ apply c p e1 e2 = do
         VIdent i -> do
             binds <- gets binds
             let e = binds ! i
-            arg <- evalExpr c e2
-            evalExpr (insert arg c) e
+            apply c p e e2
 
         VLam i e -> do
             arg <- evalExpr c e2
