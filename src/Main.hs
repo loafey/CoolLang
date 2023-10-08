@@ -1,11 +1,11 @@
 module Main where
 
 import           Control.Monad           (when)
-import           Interpreter.Interpreter (interpret)
-import           Renamer.Renamer         (rename)
 import           Error
+import           Interpreter.Interpreter (interpret)
 import           Lang.Par                (myLexer, pProgram)
 import           Lang.Print              (printTree)
+import           Renamer.Renamer         (rename)
 import           System.Environment      (getArgs)
 import           System.IO               (IOMode (ReadMode), hGetContents,
                                           openFile)
@@ -30,4 +30,5 @@ main = do
                 Right ok -> do
                     putStrLn " -- RENAMED -- "
                     putStrLn (printTree ok)
+                    putStrLn " -- OUTPUT -- "
                     interpret ok
