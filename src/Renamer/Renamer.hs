@@ -8,14 +8,12 @@ module Renamer.Renamer (rename) where
 
 import           Lang.Abs
 
-import           Control.Monad        (when)
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Map             (Map)
 import qualified Data.Map             as M
 import           Data.Set             (Set)
 import qualified Data.Set             as S
-import           Debug.Trace          (trace, traceShow)
 import           Error
 
 newtype Rn a = Rn { runRn :: ExceptT (RenameError Pos) (State Ctx) a }
@@ -35,8 +33,7 @@ emptyCtx = Ctx 0 mempty mempty mempty mempty
 type Pos = BNFC'Position
 
 rename :: Program -> Either (RenameError Pos) Program
-rename program = let (prg, ctx) = (runState . runExceptT . runRn . rnProgram) program emptyCtx
-         in trace (show ctx) prg
+rename = flip (evalState . runExceptT . runRn . rnProgram) emptyCtx
 
 rnProgram :: Program -> Rn Program
 rnProgram (Program pos defs) = Program pos <$> mapM rnDef defs
@@ -63,7 +60,6 @@ rnInjection (Inj pos name tys) = modify (\ctx -> ctx { injections = S.insert nam
 rnBaseType :: Type -> Rn Type
 rnBaseType t = do
     t' <- go t
-    trace ("TRACE: " ++ show t') pure ()
     modify (\ctx -> ctx { baseTypes = S.insert (rmPos t') ctx.baseTypes })
     pure t'
   where
