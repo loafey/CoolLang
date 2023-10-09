@@ -10,7 +10,6 @@ import           Control.Monad.State.Lazy (StateT, evalStateT, gets)
 import           Data.Map                 (Map, (!))
 import qualified Data.Map                 as Map
 import           Data.Maybe               (fromMaybe)
-import           Debug.Trace              (trace)
 import           Lang.Abs                 (BNFC'Position, Bind, Bind' (Bind),
                                            Def, Def' (DBind), Expr, Expr' (..),
                                            Ident (Ident), Lit,
@@ -58,15 +57,15 @@ data Value
     = VAbsoluteUnit
     | VLit Lit
     | VIdent Ident
-    | VLam Ident Expr
+    | VLam Context Ident Expr
 instance Show Value where
     show :: Value -> String
-    show VAbsoluteUnit          = "[]"
-    show (VLit (LString _ s))   = s
-    show (VLit (LChar _ c))     = show c
-    show (VLit (LInt _ i))      = show i
-    show (VIdent (Ident ident)) = ident
-    show (VLam (Ident ident) e) = "\\" <> ident <> " -> " <> show e
+    show VAbsoluteUnit            = "[]"
+    show (VLit (LString _ s))     = s
+    show (VLit (LChar _ c))       = show c
+    show (VLit (LInt _ i))        = show i
+    show (VIdent (Ident ident))   = ident
+    show (VLam _ (Ident ident) e) = "\\" <> ident <> " -> " <> show e
 
 
 actuallyInterpret :: CompilerState Value
@@ -77,12 +76,12 @@ actuallyInterpret = do
         Nothing   -> throwError "No main!"
 
 evalExpr :: Context -> Expr -> CompilerState Value
-evalExpr c x = case (trace (show c <>": "<> show x) x) of
+evalExpr c = \case
     EPat _ i        -> return $ fromMaybe (VIdent i) (lookup i c)
     ELit _ l        -> return $ VLit l
     EApp p l r      -> evalApply c p l r
     ELet _ i e s    -> evalLet c i e s
-    ELam _ i s      -> return $ VLam i s
+    ELam _ i s      -> return $ VLam c i s
     ECase  {}       -> todo
     EAppExplicit {} -> error "Should not exist"
 
@@ -104,10 +103,9 @@ evalApply c p e1 e2 = evalExpr c e1 >>= \case
         let e = binds ! i
         evalApply c p e e2
 
-    VLam i e -> do
+    VLam c i e -> do
         arg <- evalExpr c e2
         let c' = insert i arg c
-        {-seq (trace (show c' <> ": " <> show e) c') $ -}
         evalExpr c' e
 
     _ -> throwError ("Tried to apply on a non-ident/lambda at " ++ show p)
