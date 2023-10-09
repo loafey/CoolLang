@@ -15,7 +15,7 @@ import qualified Data.Map             as M
 import           Data.Set             (Set)
 import qualified Data.Set             as S
 import           Error
-import Debug.Trace (traceShow)
+import Debug.Trace (traceShow, trace)
 
 -- TODO: Add data types to base types before continuing.
 -- Renamer is currently completely unusble
@@ -30,7 +30,7 @@ data Ctx = Ctx
     { counter    :: Int
     , varNames   :: Map Ident Ident
     , tyNames    :: Map Ident Ident -- Can't have this TVar as it also stores position
-    , baseTypes  :: Set Type  -- Make sure to set the position of the type to Nothing
+    , baseTypes  :: Set Ident
     , injections :: Set Ident
     } deriving Show
 
@@ -41,27 +41,32 @@ type Pos = BNFC'Position
 
 
 rename :: Program -> Either (RenameError Pos) Program
-rename prg =
-    let (prg', context) = flip runState emptyCtx . runExceptT . runRn . rnProgram $ prg
-    in if debug
-       then traceShow context prg'
-       else prg'
+rename prg
+  | debug     = traceShow context prg'
+  | otherwise = prg'
+  where
+    (prg', context) = flip runState emptyCtx
+                    . runExceptT
+                    . runRn
+                    . rnProgram $ prg
 
 rnProgram :: Program -> Rn Program
-rnProgram (Program pos defs) = addDecls defs >> Program pos <$> mapM rnDef defs
+rnProgram (Program pos defs)
+    = addDecls defs
+    >> get >>= flip trace (pure ()) . ("Context before renaming: " ++) . ((++"\n") . show)
+    >> Program pos <$> mapM rnDef defs
 
 addDecls :: [Def] -> Rn ()
 addDecls [] = pure ()
 addDecls (x:xs) = case x of
-    DBind pos bind -> do
-        addBind bind
-        addDecls xs
-    DData pos dat -> addData dat >> addDecls xs
-    DSig _ _ -> addDecls xs
+    DBind _ bind -> addBind bind >> addDecls xs
+    DData _ dat -> addData dat >> addDecls xs
+    DSig _ sig -> addDecls xs -- Perhaps add signatures too
 
 addData :: Data -> Rn ()
-addData (Data pos name injs)
-    = modify (\ctx -> ctx { baseTypes = S.insert name ctx.baseTypes })
+addData d = do
+    name' <- getDataTypeName d
+    modify (\ctx -> ctx { baseTypes = S.insert name' ctx.baseTypes })
 
 addBind :: Bind -> Rn ()
 addBind (Bind pos name expr)
@@ -80,7 +85,7 @@ rnBind :: Bind -> Rn Bind
 rnBind (Bind pos name expr) = Bind pos name <$> rnExpr expr
 
 rnData :: Data -> Rn Data
-rnData (Data pos ty injections) = Data pos ty <$> mapM rnInjection injections
+rnData (Data pos ty injections) = addTyVars ty >> Data pos ty <$> mapM rnInjection injections
 
 rnInjection :: Inj -> Rn Inj
 rnInjection (Inj pos name tys) = modify (\ctx -> ctx { injections = S.insert name ctx.injections }) >> Inj pos name <$> mapM rnType tys
@@ -160,8 +165,25 @@ newTyName (Ident name) = do
 
 getTyName :: Pos -> Ident -> Rn Ident
 getTyName pos name = gets (M.lookup name . tyNames) >>= \case
-    Nothing -> throwError $ RnUnboundVar pos name
+    Nothing -> gets (S.member name . baseTypes) >>= \case
+        False -> throwError $ RnUnboundVar pos name
+        True -> pure name
     Just name' -> pure name'
+
+addTyVars :: Type -> Rn ()
+addTyVars = \case
+  TVar _ name -> void $ newTVarTyName name
+  TApp _ ty1 ty2 -> addTyVars ty1 >> addTyVars ty2
+  TAll _ tvars ty -> mapM_ newTVarTyName tvars >> addTyVars ty
+  TFun _ ty1 ty2 -> addTyVars ty1 >> addTyVars ty2
+
+getDataTypeName :: MonadError (RenameError Pos) m => Data -> m Ident
+getDataTypeName (Data _ identType _) = case identType of
+    TVar _ (MkTVar _ name)            -> pure name
+    TApp _ (TVar _ (MkTVar _ name)) _ -> pure name
+    TApp pos _ _ -> throwError $ RnBadDataType pos identType
+    TAll pos _ _ -> throwError $ RnBadDataType pos identType
+    TFun pos _ _ -> throwError $ RnBadDataType pos identType
 
 rmPos :: Type -> Type
 rmPos = fmap (const Nothing)
