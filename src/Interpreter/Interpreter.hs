@@ -9,11 +9,9 @@ import           Control.Monad.IO.Class   (liftIO)
 import           Control.Monad.State.Lazy (StateT, evalStateT, gets)
 import           Data.Map                 (Map, (!))
 import qualified Data.Map                 as Map
-import           Data.Maybe               (fromMaybe)
-import           Lang.Abs                 (BNFC'Position, Bind, Bind' (Bind),
-                                           Data' (Data), Def,
-                                           Def' (DBind, DData), Expr,
-                                           Expr' (..), Ident (Ident),
+import           Lang.Abs                 (BNFC'Position, Bind' (Bind),
+                                           Data' (Data), Def' (DBind, DData),
+                                           Expr, Expr' (..), Ident (Ident),
                                            Inj' (Inj), Lit,
                                            Lit' (LChar, LInt, LString), Program,
                                            Program' (Program), Type)

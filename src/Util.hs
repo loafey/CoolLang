@@ -4,8 +4,7 @@ module Util (
     todo
 ) where
 
-import           Lang.ErrM   (Err)
-import           Lang.Abs
+import           Lang.ErrM (Err)
 
 whenErr :: Applicative f => Err a -> (String -> f ()) -> f ()
 whenErr (Left o) f  = f o
