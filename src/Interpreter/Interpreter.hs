@@ -3,18 +3,22 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Interpreter.Interpreter where
+import           Control.Monad            (void)
 import           Control.Monad.Except     (ExceptT, MonadError (throwError),
                                            runExceptT)
 import           Control.Monad.IO.Class   (liftIO)
 import           Control.Monad.State.Lazy (StateT, evalStateT, gets)
 import           Data.Map                 (Map, (!))
 import qualified Data.Map                 as Map
-import           Lang.Abs                 (BNFC'Position, Bind' (Bind),
-                                           Data' (Data), Def' (DBind, DData),
-                                           Expr, Expr' (..), Ident (Ident),
+import           Debug.Trace              (trace, traceShowId)
+import           Lang.Abs                 (BNFC'Position, Bind' (Bind), Branch,
+                                           Branch' (Branch), Data' (Data),
+                                           Def' (DBind, DData), Expr,
+                                           Expr' (..), Ident (Ident),
                                            Inj' (Inj), Lit,
-                                           Lit' (LChar, LInt, LString), Program,
-                                           Program' (Program), Type)
+                                           Lit' (LChar, LInt, LString), Pattern,
+                                           Pattern' (PCatch, PInj, PLit, PVar),
+                                           Program, Program' (Program), Type)
 import           Lang.Print               (printTree)
 import           Prelude                  hiding (lookup)
 import           Util                     (todo, whenErr, whenOk)
@@ -97,7 +101,7 @@ evalExpr c = \case
     EApp p l r      -> evalApply c p l r
     ELet _ i e s    -> evalLet c i e s
     ELam _ i s      -> return $ VLam c i s
-    ECase  {}       -> todo
+    ECase p e b     -> evalCase c p e b
     EAppExplicit {} -> error "Should not exist"
     -- This is horrible, I know
     EPat _ i        -> case lookup i c of
@@ -107,6 +111,21 @@ evalExpr c = \case
             return $ case Map.lookup i types of
                 Just x  -> if null x then VData [] else VIdent i
                 Nothing -> VIdent i
+
+valPattern :: Pattern -> Value -> Bool
+valPattern (PLit _ l) v     = case v of
+    VLit l' -> void l == void l'
+    _       -> error "whoopsie"
+valPattern (PCatch _) _     = True
+valPattern (PVar _ _) _     = undefined
+valPattern (PInj {}) _ = undefined
+
+evalCase :: Context -> BNFC'Position -> Expr -> [Branch] -> CompilerState Value
+evalCase c p e br = do
+    e <- evalExpr c e
+    case filter (\(Branch _ p _)  -> valPattern p e) br of
+        ((Branch _ _ res):_) -> evalExpr c res
+        _     -> throwError $ "Non-exhaustive case at: " <> show p
 
 evalLet :: Context -> Ident -> Expr -> Expr -> CompilerState Value
 evalLet c i e s = do

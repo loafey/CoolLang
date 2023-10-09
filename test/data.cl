@@ -5,4 +5,4 @@ fromJust = \x -> case x of {
     just x => x ;
 };
 
-main = just 5;
+main = fromJust (just 5);
