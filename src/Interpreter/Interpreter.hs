@@ -11,28 +11,44 @@ import           Data.Map                 (Map, (!))
 import qualified Data.Map                 as Map
 import           Data.Maybe               (fromMaybe)
 import           Lang.Abs                 (BNFC'Position, Bind, Bind' (Bind),
-                                           Def, Def' (DBind), Expr, Expr' (..),
-                                           Ident (Ident), Lit,
+                                           Data' (Data), Def,
+                                           Def' (DBind, DData), Expr,
+                                           Expr' (..), Ident (Ident),
+                                           Inj' (Inj), Lit,
                                            Lit' (LChar, LInt, LString), Program,
-                                           Program' (Program))
+                                           Program' (Program), Type)
+import           Lang.Print               (printTree)
 import           Prelude                  hiding (lookup)
 import           Util                     (todo, whenErr, whenOk)
 
 interpret :: Program -> IO ()
 interpret p = do
-    let state = InterpreterState $ getBinds p
+    let (binds, dtypes) = getBinds p
+    print dtypes
+    let state = InterpreterState binds dtypes
+    putStrLn " -- Expanded tree --"
+    mapM_ ((putStrLn . printTree) . uncurry (Bind Nothing)) (Map.toList binds)
+    -- putStrLn " -- Expanded tree raw --"
+    -- mapM_ (print . uncurry (Bind Nothing)) (Map.toList binds)
     res <- runExceptT $ evalStateT actuallyInterpret state
     whenErr res putStrLn
     whenOk res print
 
-getBinds :: Program -> Map Ident Expr
-getBinds (Program _ program) = Map.fromList $ map (\(Bind _ y z) -> (y, z)) $ filterBinds program
+getBinds :: Program -> (Map Ident Expr, Map Ident [Type])
+getBinds (Program _ program) = (filterBinds, filterData)
+    where
+        filterBinds :: Map Ident Expr
+        filterBinds = Map.fromList
+            [(\(Bind _ y z) -> (y, z)) a | DBind _ a <- program]
 
-filterBinds :: [Def] -> [Bind]
-filterBinds binds = [a | DBind _ a <- binds]
+        filterData :: Map Ident [Type]
+        filterData = Map.fromList
+            $ map (\(Inj _ i t) -> (i, t))
+            $ concat [(\ (Data _ _ z) -> z) a | DData _ a <- program]
 
-newtype InterpreterState = InterpreterState {
-        binds :: Map Ident Expr
+data InterpreterState = InterpreterState {
+        binds :: Map Ident Expr,
+        types :: Map Ident [Type]
     }
 
 type CompilerState a = StateT InterpreterState (ExceptT String IO) a
@@ -58,6 +74,7 @@ data Value
     | VLit Lit
     | VIdent Ident
     | VLam Context Ident Expr
+    | VData [Value]
 instance Show Value where
     show :: Value -> String
     show VAbsoluteUnit            = "[]"
@@ -66,6 +83,7 @@ instance Show Value where
     show (VLit (LInt _ i))        = show i
     show (VIdent (Ident ident))   = ident
     show (VLam _ (Ident ident) e) = "\\" <> ident <> " -> " <> show e
+    show (VData xs)               = show xs
 
 
 actuallyInterpret :: CompilerState Value
@@ -77,13 +95,20 @@ actuallyInterpret = do
 
 evalExpr :: Context -> Expr -> CompilerState Value
 evalExpr c = \case
-    EPat _ i        -> return $ fromMaybe (VIdent i) (lookup i c)
     ELit _ l        -> return $ VLit l
     EApp p l r      -> evalApply c p l r
     ELet _ i e s    -> evalLet c i e s
     ELam _ i s      -> return $ VLam c i s
     ECase  {}       -> todo
     EAppExplicit {} -> error "Should not exist"
+    -- This is horrible, I know
+    EPat _ i        -> case lookup i c of
+        Just v  -> return v
+        Nothing -> do
+            types <- gets types
+            return $ case Map.lookup i types of
+                Just x  -> if null x then VData [] else VIdent i
+                Nothing -> VIdent i
 
 evalLet :: Context -> Ident -> Expr -> Expr -> CompilerState Value
 evalLet c i e s = do
@@ -100,8 +125,16 @@ evalApply c p e1 e2 = evalExpr c e1 >>= \case
 
     VIdent i -> do
         binds <- gets binds
-        let e = binds ! i
-        evalApply c p e e2
+        case Map.lookup i binds of
+            Just e -> evalApply c p e e2
+            Nothing -> do
+                types <- gets types
+                e2 <- evalExpr c e2
+                -- Crash if the constructor does not exist, but I am
+                -- not sure if we need it?
+                seq (types ! i) $
+                    return $ VData [e2]
+
 
     VLam c i e -> do
         arg <- evalExpr c e2
