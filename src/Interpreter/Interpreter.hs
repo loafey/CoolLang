@@ -54,7 +54,7 @@ data InterpreterState = InterpreterState {
         types :: Map Ident (Int, [Type])
     }
 
-type CompilerState a = StateT InterpreterState (ExceptT String IO) a
+type IS a = StateT InterpreterState (ExceptT String IO) a
 
 newtype Context = Context {
         named :: Map Ident Value
@@ -89,14 +89,14 @@ instance Show Value where
     show (VData i xs)             = "(" <> show i <> ": " <> show xs <> ")"
 
 
-actuallyInterpret :: CompilerState Value
+actuallyInterpret :: IS Value
 actuallyInterpret = do
     binds <- gets binds
     case Map.lookup "main" binds of
         Just main -> evalExpr emptyContext main
         Nothing   -> throwError "No main!"
 
-evalExpr :: Context -> Expr -> CompilerState Value
+evalExpr :: Context -> Expr -> IS Value
 evalExpr c = \case
     ELit _ l        -> return $ VLit l
     EApp p l r      -> evalApply c p l r
@@ -113,7 +113,7 @@ evalExpr c = \case
                 Just (ind, x) -> if null x then VData ind [] else VIdent i
                 Nothing       -> VIdent i
 
-valPattern :: Context -> Pattern -> Value -> CompilerState (Context, Bool)
+valPattern :: Context -> Pattern -> Value -> IS (Context, Bool)
 valPattern c (PLit _ l) v = case v of
     VLit l' -> return (c, void l == void l')
     _       -> throwError "Type error TODO fill out"
@@ -132,7 +132,7 @@ valPattern c (PInj _ i p) v = case v of
                 ) (c, False) (zip p p')
     _ -> throwError "Type error TODO fill out"
 
-evalCase :: Context -> BNFC'Position -> Expr -> [Branch] -> CompilerState Value
+evalCase :: Context -> BNFC'Position -> Expr -> [Branch] -> IS Value
 evalCase c p e br = do
     e <- evalExpr c e
     cases <- mapM (\(Branch _ p r)  -> (r,) <$> valPattern c p e) br
@@ -141,13 +141,13 @@ evalCase c p e br = do
         ((res, (c,_)):_) -> evalExpr c res
         _                -> throwError $ "Non-exhaustive case at: " <> show p
 
-evalLet :: Context -> Ident -> Expr -> Expr -> CompilerState Value
+evalLet :: Context -> Ident -> Expr -> Expr -> IS Value
 evalLet c i e s = do
     val <- evalExpr c e
     let c' = insert i val c
     evalExpr c' s
 
-evalApply :: Context -> BNFC'Position -> Expr -> Expr -> CompilerState Value
+evalApply :: Context -> BNFC'Position -> Expr -> Expr -> IS Value
 evalApply c p e1 e2 = evalExpr c e1 >>= \case
     VIdent "print" -> do
         arg <- evalExpr c e2
