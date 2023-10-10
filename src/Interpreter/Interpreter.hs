@@ -36,21 +36,22 @@ interpret p = do
     whenErr res putStrLn
     whenOk res print
 
-getBinds :: Program -> (Map Ident Expr, Map Ident [Type])
+getBinds :: Program -> (Map Ident Expr, Map Ident (Int, [Type]))
 getBinds (Program _ program) = (filterBinds, filterData)
     where
         filterBinds :: Map Ident Expr
         filterBinds = Map.fromList
             [(\(Bind _ y z) -> (y, z)) a | DBind _ a <- program]
 
-        filterData :: Map Ident [Type]
+        filterData :: Map Ident (Int, [Type])
         filterData = Map.fromList
-            $ map (\(Inj _ i t) -> (i, t))
-            $ concat [(\ (Data _ _ z) -> z) a | DData _ a <- program]
+            $ map (\(ind, Inj _ i t) -> (i, (ind, t)))
+            $ concat
+            $ [zip [0..] a | DData _ (Data _ _ a) <- program]
 
 data InterpreterState = InterpreterState {
         binds :: Map Ident Expr,
-        types :: Map Ident [Type]
+        types :: Map Ident (Int, [Type])
     }
 
 type CompilerState a = StateT InterpreterState (ExceptT String IO) a
@@ -76,7 +77,7 @@ data Value
     | VLit Lit
     | VIdent Ident
     | VLam Context Ident Expr
-    | VData [Value]
+    | VData Int [Value]
 instance Show Value where
     show :: Value -> String
     show VAbsoluteUnit            = "[]"
@@ -85,7 +86,7 @@ instance Show Value where
     show (VLit (LInt _ i))        = show i
     show (VIdent (Ident ident))   = ident
     show (VLam _ (Ident ident) e) = "\\" <> ident <> " -> " <> show e
-    show (VData xs)               = show xs
+    show (VData i xs)             = "(" <> show i <> ": " <> show xs <> ")"
 
 
 actuallyInterpret :: CompilerState Value
@@ -109,8 +110,8 @@ evalExpr c = \case
         Nothing -> do
             types <- gets types
             return $ case Map.lookup i types of
-                Just x  -> if null x then VData [] else VIdent i
-                Nothing -> VIdent i
+                Just (ind, x) -> if null x then VData ind [] else VIdent i
+                Nothing       -> VIdent i
 
 valPattern :: Pattern -> Value -> Bool
 valPattern (PLit _ l) v     = case v of
@@ -147,10 +148,8 @@ evalApply c p e1 e2 = evalExpr c e1 >>= \case
             Nothing -> do
                 types <- gets types
                 e2 <- evalExpr c e2
-                -- Crash if the constructor does not exist, but I am
-                -- not sure if we need it?
-                seq (types ! i) $
-                    return $ VData [e2]
+                let (ind, _) = types ! i
+                return $ VData ind [e2]
 
 
     VLam c i e -> do
