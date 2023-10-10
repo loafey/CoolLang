@@ -122,8 +122,8 @@ valPattern (PInj _ i p) v = case v of
     VData ind p' -> do
         types <- gets types
         let (ind',_) = types ! i
-        if ind /= ind'
-            then return False
+        if ind /= ind' then
+            return False
         else
             or <$> zipWithM valPattern p p'
     _ -> error "whoopsie"
