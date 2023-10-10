@@ -3,9 +3,10 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Interpreter.Interpreter where
-import           Control.Monad            (filterM, foldM, void, zipWithM)
+import           Control.Monad            (void)
 import           Control.Monad.Except     (ExceptT, MonadError (throwError),
                                            runExceptT)
+import           Control.Monad.Extra      (foldM)
 import           Control.Monad.IO.Class   (liftIO)
 import           Control.Monad.State.Lazy (StateT, evalStateT, gets)
 import qualified Data.Bifunctor
@@ -19,19 +20,12 @@ import           Lang.Abs                 (BNFC'Position, Bind' (Bind), Branch,
                                            Lit' (LChar, LInt, LString), Pattern,
                                            Pattern' (PCatch, PInj, PLit, PVar),
                                            Program, Program' (Program), Type)
-import           Lang.Print               (printTree)
 import           Prelude                  hiding (lookup)
 import           Util                     (whenErr, whenOk)
 
 interpret :: Program -> IO ()
 interpret p = do
-    let (binds, dtypes) = getBinds p
-    print dtypes
-    let state = InterpreterState binds dtypes
-    putStrLn " -- Expanded tree --"
-    mapM_ ((putStrLn . printTree) . uncurry (Bind Nothing)) (Map.toList binds)
-    -- putStrLn " -- Expanded tree raw --"
-    -- mapM_ (print . uncurry (Bind Nothing)) (Map.toList binds)
+    let state = uncurry InterpreterState $ getBinds p
     res <- runExceptT $ evalStateT actuallyInterpret state
     whenErr res putStrLn
     whenOk res print
@@ -46,8 +40,7 @@ getBinds (Program _ program) = (filterBinds, filterData)
         filterData :: Map Ident (Int, [Type])
         filterData = Map.fromList
             $ map (\(ind, Inj _ i t) -> (i, (ind, t)))
-            $ concat
-            $ [zip [0..] a | DData _ (Data _ _ a) <- program]
+            $ concat [zip [0..] a | DData _ (Data _ _ a) <- program]
 
 data InterpreterState = InterpreterState {
         binds :: Map Ident Expr,
