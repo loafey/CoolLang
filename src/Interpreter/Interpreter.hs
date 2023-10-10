@@ -157,10 +157,19 @@ evalApply c p e1 e2 = evalExpr c e1 >>= \case
                 let (ind, _) = types ! i
                 return $ VData ind [e2]
 
-
     VLam c i e -> do
         arg <- evalExpr c e2
         let c' = insert i arg c
         evalExpr c' e
 
-    _ -> throwError ("Tried to apply on a non-ident/lambda at " ++ show p)
+    -- This should not type check!
+    VData ind r -> do
+        arg <- evalExpr c e2
+        return $ VData ind (r ++ [arg])
+
+    x -> throwError $ concat
+        ["Tried to apply on a non-ident/lambda at "
+        , show p
+        , "["
+        , show x
+        , "]"]
