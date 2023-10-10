@@ -3,11 +3,12 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Interpreter.Interpreter where
-import           Control.Monad            (filterM, void, zipWithM)
+import           Control.Monad            (filterM, foldM, void, zipWithM)
 import           Control.Monad.Except     (ExceptT, MonadError (throwError),
                                            runExceptT)
 import           Control.Monad.IO.Class   (liftIO)
 import           Control.Monad.State.Lazy (StateT, evalStateT, gets)
+import qualified Data.Bifunctor
 import           Data.Map                 (Map, (!))
 import qualified Data.Map                 as Map
 import           Lang.Abs                 (BNFC'Position, Bind' (Bind), Branch,
@@ -112,29 +113,33 @@ evalExpr c = \case
                 Just (ind, x) -> if null x then VData ind [] else VIdent i
                 Nothing       -> VIdent i
 
-valPattern :: Pattern -> Value -> CompilerState Bool
-valPattern (PLit _ l) v = case v of
-    VLit l' -> return $ void l == void l'
-    _       -> error "whoopsie"
-valPattern (PCatch _) _     = return True
-valPattern (PVar _ _) _     = undefined
-valPattern (PInj _ i p) v = case v of
+valPattern :: Context -> Pattern -> Value -> CompilerState (Context, Bool)
+valPattern c (PLit _ l) v = case v of
+    VLit l' -> return (c, void l == void l')
+    _       -> throwError "Type error TODO fill out"
+valPattern c (PCatch _) _     = return (c, True)
+valPattern c (PVar _ i) v     = do
+    let c' = insert i v c
+    return (c', True)
+valPattern c (PInj _ i p) v = case v of
     VData ind p' -> do
         types <- gets types
         let (ind',_) = types ! i
         if ind /= ind' then
-            return False
-        else
-            or <$> zipWithM valPattern p p'
-    _ -> error "whoopsie"
+            return (c, False)
+        else foldM (\(c',r) (x,y) ->
+                    Data.Bifunctor.second (r ||) <$> valPattern c' x y
+                ) (c, False) (zip p p')
+    _ -> throwError "Type error TODO fill out"
 
 evalCase :: Context -> BNFC'Position -> Expr -> [Branch] -> CompilerState Value
 evalCase c p e br = do
     e <- evalExpr c e
-    bools <- filterM (\(Branch _ p _)  -> valPattern p e) br
-    case bools of
-        ((Branch _ _ res):_) -> evalExpr c res
-        _     -> throwError $ "Non-exhaustive case at: " <> show p
+    cases <- mapM (\(Branch _ p r)  -> (r,) <$> valPattern c p e) br
+    let f = filter (\(_,(_,x)) -> x) cases
+    case f of
+        ((res, (c,_)):_) -> evalExpr c res
+        _                -> throwError $ "Non-exhaustive case at: " <> show p
 
 evalLet :: Context -> Ident -> Expr -> Expr -> CompilerState Value
 evalLet c i e s = do

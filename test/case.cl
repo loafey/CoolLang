@@ -1,4 +1,4 @@
-main = case 4 of {
-    3 => 1;
-    _ => 5;
+main = case 1 of {
+    1 => 101010;
+    x => x;
 };
