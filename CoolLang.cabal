@@ -69,7 +69,6 @@ executable CoolLang
                       Lang.Lex
                       Lang.Par
                       TypeChecker.TypeChecker
-                      Interpreter.Interpreter
                       Util
                       Renamer.Renamer
                       Error
@@ -83,7 +82,8 @@ executable CoolLang
                       containers,
                       array,
                       either,
-                      extra
+                      extra,
+                      lens
 
     -- Directories containing source files.
     hs-source-dirs:   src

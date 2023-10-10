@@ -7,13 +7,13 @@ DBind. Def ::= Bind ;
 DData. Def ::= Data ;
 
 Bind. Bind ::= Ident "=" Expr ;
-Sig. Sig   ::= Ident ":" Type ;
+Sig. Sig   ::= Ident ":" Domain ;
 
 -------------------------------------------------------------------------------
 -- * Data Types
 -------------------------------------------------------------------------------
 
-Data. Data ::= "data" Type "=" [Inj] ;
+Data. Data ::= "data" Domain "=" [Inj] ;
 
 Inj. Inj ::= Ident [Type] ;
 
@@ -24,16 +24,18 @@ separator Type " " ;
 -- * Type
 -------------------------------------------------------------------------------
 
-TVar. Type3 ::= TVar ;
-TApp. Type2 ::= Type2 Type3 ;
-TFun. Type1 ::= Type2 "->" Type1 ;
-TAll. Type ::= "forall" [TVar] "." Type1 ;
+TAll. Domain ::= "forall" [TVar] "." Type ;
+TEmpty. Domain ::= Type ;
+
+TVar. Type2 ::= TVar ;
+TApp. Type1 ::= Type1 Type2 ;
+TFun. Type ::= Type1 "->" Type ;
 
 MkTVar. TVar ::= Ident ;
 
-separator TVar " " ;
+separator nonempty TVar " " ;
 
-coercions Type 3 ;
+coercions Type 2 ;
 
 -------------------------------------------------------------------------------
 -- * Pattern matching

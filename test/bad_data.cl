@@ -1,1 +1,1 @@
-data Maybe (a -> b) = Nothing ;
+data forall a b. Maybe (a -> b) = Nothing ;
