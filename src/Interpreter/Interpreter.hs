@@ -3,14 +3,13 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Interpreter.Interpreter where
-import           Control.Monad            (void)
+import           Control.Monad            (filterM, void, zipWithM)
 import           Control.Monad.Except     (ExceptT, MonadError (throwError),
                                            runExceptT)
 import           Control.Monad.IO.Class   (liftIO)
 import           Control.Monad.State.Lazy (StateT, evalStateT, gets)
 import           Data.Map                 (Map, (!))
 import qualified Data.Map                 as Map
-import           Debug.Trace              (trace, traceShowId)
 import           Lang.Abs                 (BNFC'Position, Bind' (Bind), Branch,
                                            Branch' (Branch), Data' (Data),
                                            Def' (DBind, DData), Expr,
@@ -21,7 +20,7 @@ import           Lang.Abs                 (BNFC'Position, Bind' (Bind), Branch,
                                            Program, Program' (Program), Type)
 import           Lang.Print               (printTree)
 import           Prelude                  hiding (lookup)
-import           Util                     (todo, whenErr, whenOk)
+import           Util                     (whenErr, whenOk)
 
 interpret :: Program -> IO ()
 interpret p = do
@@ -113,18 +112,27 @@ evalExpr c = \case
                 Just (ind, x) -> if null x then VData ind [] else VIdent i
                 Nothing       -> VIdent i
 
-valPattern :: Pattern -> Value -> Bool
-valPattern (PLit _ l) v     = case v of
-    VLit l' -> void l == void l'
+valPattern :: Pattern -> Value -> CompilerState Bool
+valPattern (PLit _ l) v = case v of
+    VLit l' -> return $ void l == void l'
     _       -> error "whoopsie"
-valPattern (PCatch _) _     = True
+valPattern (PCatch _) _     = return True
 valPattern (PVar _ _) _     = undefined
-valPattern (PInj {}) _ = undefined
+valPattern (PInj _ i p) v = case v of
+    VData ind p' -> do
+        types <- gets types
+        let (ind',_) = types ! i
+        if ind /= ind'
+            then return False
+        else
+            or <$> zipWithM valPattern p p'
+    _ -> error "whoopsie"
 
 evalCase :: Context -> BNFC'Position -> Expr -> [Branch] -> CompilerState Value
 evalCase c p e br = do
     e <- evalExpr c e
-    case filter (\(Branch _ p _)  -> valPattern p e) br of
+    bools <- filterM (\(Branch _ p _)  -> valPattern p e) br
+    case bools of
         ((Branch _ _ res):_) -> evalExpr c res
         _     -> throwError $ "Non-exhaustive case at: " <> show p
 
