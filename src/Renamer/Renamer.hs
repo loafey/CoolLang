@@ -16,6 +16,7 @@ import           Data.Set             (Set)
 import qualified Data.Set             as S
 import           Error
 import           Util                 (sortBindsLast)
+import Debug.Trace (traceShowM)
 
 type Pos = BNFC'Position
 
@@ -28,7 +29,7 @@ data Ctx = Ctx
     , binds        :: Set Ident
     , tyVariables  :: Map TVar TVar
     , baseTypes    :: Set TVar
-    , constructors :: Set Inj
+    , constructors :: Set Ident
     } deriving Show
 
 emptyCtx :: Ctx
@@ -64,9 +65,11 @@ rnBind (Bind pos name expr) = do
 rnData :: Data -> Rn Data
 rnData d@(Data pos domain injections) = do
     cleanContext
-    name <- getDataTypeName d
+    (name, tvars) <- isValidData domain
+    -- Find which two names clash and add both to error constructor
+    noOverlappingVars tvars
+    when (rmPosTVar name `elem` map rmPosTVar tvars) (throwError $ RnNameTypeVariableClash (hasPosition name) d name)
     addBaseType name
-    isValidData domain
     domain <- rnDomain domain
     Data pos domain <$> mapM rnInjection injections
 
@@ -80,6 +83,17 @@ rnDomain (TEmpty pos ty) = TEmpty pos <$> rnType ty
 rnDomain (TAll pos tvars ty) = do
     tvars <- mapM newTypeName tvars
     TAll pos tvars <$> rnType ty
+
+rnTypeData :: Type -> Rn Type
+rnTypeData ty = case ty of
+    TVar pos1 name -> do
+        let name' = rmPosTVar name
+        tyvars <- gets tyVariables
+        case M.lookup name' tyvars of
+            Nothing   -> throwError $ RnUnboundTVar pos1 name
+            Just name -> pure $ TVar pos1 name
+    TApp pos ty1 ty2  -> TApp pos <$> rnType ty1 <*> rnType ty2
+    TFun pos ty1 ty2  -> TFun pos <$> rnType ty1 <*> rnType ty2
 
 rnExpr :: Expr -> Rn Expr
 rnExpr = \case
@@ -158,9 +172,11 @@ newVarName (Ident name) = do
     pure name'
 
 getVarName :: Pos -> Ident -> Rn Ident
-getVarName pos name = gets (M.lookup name . variables) >>= \case
-    Nothing -> throwError $ RnUnboundVar pos name
-    Just name' -> pure name'
+getVarName pos name = gets (S.member name . constructors) >>= \case
+    False -> gets (M.lookup name . variables) >>= \case
+        Nothing -> throwError $ RnUnboundVar pos name
+        Just name' -> pure name'
+    True -> pure name
 
 newTypeName :: (MonadState Ctx m) => TVar -> m TVar
 newTypeName tvar@(MkTVar _ (Ident name)) = do
@@ -200,26 +216,41 @@ getTVars t = case t of
     TFun _ ty1 ty2 -> getTVars ty1 ++ getTVars ty2
 
 addInjection :: MonadState Ctx m => Inj -> m ()
-addInjection inj = modify (\ctx -> ctx { constructors = S.insert inj ctx.constructors })
+addInjection (Inj _ name _) = modify (\ctx -> ctx { constructors = S.insert name ctx.constructors })
 
 isConstructor :: Ident -> Rn Bool
-isConstructor ident = do
-    injs <- gets constructors
-    let names = S.map getName injs
-    pure (ident `S.member` names)
-  where
-    getName (Inj _ name _) = name
+isConstructor ident = gets (S.member ident . constructors)
 
-isValidData :: Domain -> Rn ()
+isValidData :: (MonadError (RenameError Pos) m) => Domain -> m (TVar, [TVar])
 isValidData domain = case domain of
     TEmpty _ ty -> go ty
     TAll _ _ ty -> go ty
   where
-    go :: Type -> Rn ()
+    go :: (MonadError (RenameError Pos) m) => Type -> m (TVar, [TVar])
     go ty = case ty of
-        TVar _ _             -> pure ()
-        TApp _ (TVar _ _) ty -> go ty
+        TVar _ name          -> pure (name, [])
+        TApp _ (TVar _ name) ty -> do
+            xs <- go' ty
+            pure (name, xs)
+        TApp _ ty1 ty2 -> do
+            (name, tvars) <- go ty1
+            tvars' <- go' ty2
+            pure (name, tvars ++ tvars')
         _                    -> throwError $ RnBadDataType (hasPosition ty) ty
+    go' :: (MonadError (RenameError Pos) m) => Type -> m [TVar]
+    go' ty = case ty of
+        TVar _ tvar -> pure [tvar]
+        TApp _ ty1 ty2 -> do
+            xs <- go' ty1
+            ys <- go' ty2
+            pure (xs ++ ys)
+        _                    -> throwError $ RnBadDataType (hasPosition ty) ty
+
+noOverlappingVars :: MonadError (RenameError Pos) m => [TVar] -> m ()
+noOverlappingVars [] = pure ()
+noOverlappingVars (x:xs)
+  | rmPosTVar x `elem` map rmPosTVar xs = throwError $ RnDuplicateParameterName (hasPosition x) x 
+  | otherwise = noOverlappingVars xs
 
 rmPosType :: Type -> Type
 rmPosType = fmap (const Nothing)
@@ -227,5 +258,9 @@ rmPosType = fmap (const Nothing)
 rmPosTVar :: TVar -> TVar
 rmPosTVar = fmap (const Nothing)
 
+rmPosInj :: Inj -> Inj
+rmPosInj = fmap (const Nothing)
+
 cleanContext :: Rn ()
-cleanContext = modify (\ctx -> ctx { tyVariables = mempty })
+cleanContext = modify (\ctx -> ctx { tyVariables = mempty, variables = mempty })
+

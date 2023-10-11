@@ -82,8 +82,7 @@ executable CoolLang
                       containers,
                       array,
                       either,
-                      extra,
-                      lens
+                      extra
 
     -- Directories containing source files.
     hs-source-dirs:   src
