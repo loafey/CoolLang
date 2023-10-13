@@ -57,13 +57,14 @@ separator nonempty Pattern1 " " ;
 -------------------------------------------------------------------------------
 
 -- Let EPat act as variable and constructor
-EPat.         Expr2 ::= Ident ;
-ELit.         Expr2 ::= Lit ;
-EApp.         Expr1 ::= Expr1 Expr2 ;
-EAppExplicit. Expr1 ::= Expr1 "{" Type "}" Expr2 ;
-ECase.        Expr1 ::= "case" Expr "of" "{" [Branch] "}" ;
-ELet.         Expr ::= "let" Ident "=" Expr "in" Expr1 ;
-ELam.         Expr ::= "\\" Ident "->" Expr ;
+EPat.         Expr3 ::= Ident ;
+ELit.         Expr3 ::= Lit ;
+EApp.         Expr2 ::= Expr2 Expr3 ;
+EAppExplicit. Expr2 ::= Expr2 "{" Type "}" Expr3 ;
+ECase.        Expr2 ::= "case" Expr1 "of" "{" [Branch] "}" ;
+ELet.         Expr1 ::= "let" Ident "=" Expr1 "in" Expr2 ;
+ELam.         Expr1 ::= "\\" Ident "->" Expr1 ;
+EAnn.         Expr ::= Expr ":" Type ;
 
 coercions Expr 3 ;
 

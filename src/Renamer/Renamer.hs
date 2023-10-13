@@ -16,7 +16,6 @@ import           Data.Set             (Set)
 import qualified Data.Set             as S
 import           Error
 import           Util                 (sortBindsLast)
-import Debug.Trace (traceShowM)
 
 type Pos = BNFC'Position
 
@@ -68,7 +67,8 @@ rnData d@(Data pos domain injections) = do
     (name, tvars) <- isValidData domain
     -- Find which two names clash and add both to error constructor
     noOverlappingVars tvars
-    when (rmPosTVar name `elem` map rmPosTVar tvars) (throwError $ RnNameTypeVariableClash (hasPosition name) d name)
+    when (rmPosTVar name `elem` map rmPosTVar tvars) $ do
+         throwError $ RnNameTypeVariableClash (hasPosition name) d name
     addBaseType name
     domain <- rnDomain domain
     Data pos domain <$> mapM rnInjection injections
@@ -104,14 +104,15 @@ rnExpr = \case
     ELet pos ident e1 e2 -> do
         name' <- newVarName ident
         ELet pos name' <$> rnExpr e1 <*> rnExpr e2
-    ELam pos ident e -> do
-        ident' <- newVarName ident
-        e' <- rnExpr e
-        pure (ELam pos ident' e')
     ECase pos e1 branches -> do
         e1' <- rnExpr e1
         branches' <- mapM rnBranch branches
         pure $ ECase pos e1' branches'
+    ELam pos ident e -> do
+        ident' <- newVarName ident
+        e' <- rnExpr e
+        pure (ELam pos ident' e')
+    EAnn pos expr ty -> EAnn pos <$> rnExpr expr <*> rnType ty
 
 rnBranch :: Branch -> Rn Branch
 rnBranch (Branch pos pat expr) = Branch pos <$> rnPattern mempty pat <*> rnExpr expr
@@ -249,7 +250,7 @@ isValidData domain = case domain of
 noOverlappingVars :: MonadError (RenameError Pos) m => [TVar] -> m ()
 noOverlappingVars [] = pure ()
 noOverlappingVars (x:xs)
-  | rmPosTVar x `elem` map rmPosTVar xs = throwError $ RnDuplicateParameterName (hasPosition x) x 
+  | rmPosTVar x `elem` map rmPosTVar xs = throwError $ RnDuplicateParameterName (hasPosition x) x
   | otherwise = noOverlappingVars xs
 
 rmPosType :: Type -> Type
@@ -263,4 +264,3 @@ rmPosInj = fmap (const Nothing)
 
 cleanContext :: Rn ()
 cleanContext = modify (\ctx -> ctx { tyVariables = mempty, variables = mempty })
-
