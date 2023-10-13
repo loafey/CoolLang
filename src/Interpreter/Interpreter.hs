@@ -1,5 +1,6 @@
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE LambdaCase               #-}
+{-# LANGUAGE OverloadedStrings        #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Interpreter.Interpreter where
@@ -10,8 +11,14 @@ import           Control.Monad.Extra      (foldM)
 import           Control.Monad.IO.Class   (liftIO)
 import           Control.Monad.State.Lazy (StateT, evalStateT, gets)
 import qualified Data.Bifunctor
+import           Data.Int                 (Int64)
+import           Data.IORef
 import           Data.Map                 (Map, (!))
 import qualified Data.Map                 as Map
+import           Data.Void                (Void)
+import           Foreign                  (Ptr, peek)
+import           Foreign.C                (CString, newCString)
+import           GHC.Ptr                  (FunPtr (FunPtr))
 import           Lang.Abs                 (BNFC'Position, Bind' (Bind), Branch,
                                            Branch' (Branch), Data' (Data),
                                            Def' (DBind, DData), Expr,
@@ -21,7 +28,13 @@ import           Lang.Abs                 (BNFC'Position, Bind' (Bind), Branch,
                                            Pattern' (PCatch, PInj, PLit, PVar),
                                            Program, Program' (Program), Type)
 import           Prelude                  hiding (lookup)
+import           Unsafe.Coerce            (unsafeCoerce)
 import           Util                     (whenErr, whenOk)
+
+foreign import ccall "dlopen" c_dlopen :: CString -> Int -> Ptr Void
+foreign import ccall "dlsym" c_dlsym :: Ptr Void -> CString -> FunPtr (Ptr Void -> Ptr Void)
+foreign import ccall "dynamic"
+  mkFun :: FunPtr (Ptr Void -> Ptr Void) -> (Ptr Void -> Ptr Void)
 
 interpret :: Program -> IO ()
 interpret p = do
@@ -140,8 +153,35 @@ evalLet c i e s = do
     let c' = insert i val c
     evalExpr c' s
 
+libc :: IO (IORef (Ptr Void))
+{-# NOINLINE libc #-}
+libc = do
+    lib <- liftIO $ newCString "libc"
+    newIORef $ c_dlopen lib 0
+getLibC :: IO (Ptr Void)
+getLibC = do
+    libc <- libc
+    readIORef libc
+getFunc :: String -> IO a
+getFunc s = do
+    libc <- getLibC
+    funcName <- liftIO $ newCString s
+    let func = mkFun $ c_dlsym libc funcName
+    pure (unsafeCoerce func :: a)
+
+
+
 evalApply :: Context -> BNFC'Position -> Expr -> Expr -> IS Value
 evalApply c p e1 e2 = evalExpr c e1 >>= \case
+    VIdent "c_call" -> do
+        puts <- (liftIO $ getFunc "puts") :: StateT InterpreterState (ExceptT String IO) (CString -> IO ())
+        hello <- liftIO $ newCString "crongus"
+        liftIO $ puts hello
+        difftime <- (liftIO $ getFunc "difftime") :: StateT InterpreterState (ExceptT String IO) (Int64 -> Int64 -> Double)
+        liftIO . print $ difftime 452141 54212
+
+        return VAbsoluteUnit
+
     VIdent "print" -> do
         arg <- evalExpr c e2
         liftIO $ print arg
