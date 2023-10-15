@@ -16,9 +16,11 @@ import           Data.IORef
 import           Data.Map                 (Map, (!))
 import qualified Data.Map                 as Map
 import           Data.Void                (Void)
-import           Foreign                  (Ptr, peek)
-import           Foreign.C                (CString, newCString)
-import           GHC.Ptr                  (FunPtr (FunPtr))
+import           Foreign                  (Ptr, Storable (peek))
+import           Foreign.C                (CDouble (CDouble), CString,
+                                           newCString)
+import           GHC.Exts
+import           GHC.Ptr                  (FunPtr)
 import           Lang.Abs                 (BNFC'Position, Bind' (Bind), Branch,
                                            Branch' (Branch), Data' (Data),
                                            Def' (DBind, DData), Expr,
@@ -28,13 +30,19 @@ import           Lang.Abs                 (BNFC'Position, Bind' (Bind), Branch,
                                            Pattern' (PCatch, PInj, PLit, PVar),
                                            Program, Program' (Program), Type)
 import           Prelude                  hiding (lookup)
+import           Text.Printf              (printf)
 import           Unsafe.Coerce            (unsafeCoerce)
 import           Util                     (whenErr, whenOk)
 
-foreign import ccall "dlopen" c_dlopen :: CString -> Int -> Ptr Void
-foreign import ccall "dlsym" c_dlsym :: Ptr Void -> CString -> FunPtr (Ptr Void -> Ptr Void)
 foreign import ccall "dynamic"
   mkFun :: FunPtr (Ptr Void -> Ptr Void) -> (Ptr Void -> Ptr Void)
+foreign import ccall "FunctionLoader.h getLibCFunction"
+  getLibCFunction :: CString -> FunPtr (Ptr Void -> Ptr Void)
+getFunc :: String -> IO a
+getFunc s = do
+    funcName <- liftIO $ newCString s
+    let func = mkFun (unsafeCoerce (getLibCFunction funcName) :: (FunPtr a))
+    pure func
 
 interpret :: Program -> IO ()
 interpret p = do
@@ -153,32 +161,21 @@ evalLet c i e s = do
     let c' = insert i val c
     evalExpr c' s
 
-libc :: IO (IORef (Ptr Void))
-{-# NOINLINE libc #-}
-libc = do
-    lib <- liftIO $ newCString "libc"
-    newIORef $ c_dlopen lib 0
-getLibC :: IO (Ptr Void)
-getLibC = do
-    libc <- libc
-    readIORef libc
-getFunc :: String -> IO a
-getFunc s = do
-    libc <- getLibC
-    funcName <- liftIO $ newCString s
-    let func = mkFun $ c_dlsym libc funcName
-    pure (unsafeCoerce func :: a)
-
 
 
 evalApply :: Context -> BNFC'Position -> Expr -> Expr -> IS Value
 evalApply c p e1 e2 = evalExpr c e1 >>= \case
     VIdent "c_call" -> do
-        puts <- (liftIO $ getFunc "puts") :: StateT InterpreterState (ExceptT String IO) (CString -> IO ())
+        puts <- liftIO (getFunc "puts" :: IO (CString -> IO ()))
         hello <- liftIO $ newCString "crongus"
         liftIO $ puts hello
-        difftime <- (liftIO $ getFunc "difftime") :: StateT InterpreterState (ExceptT String IO) (Int64 -> Int64 -> Double)
-        liftIO . print $ difftime 452141 54212
+        difftime <- liftIO (getFunc "exp" :: IO (CDouble -> Double))
+        liftIO $ mapM_ (\x -> do
+                let dif = difftime x
+                printf "Exp: %064b\n" (unsafeCoerce (exp x) :: Int64)
+                printf "Res: %064b\n\n" (unsafeCoerce dif :: Int64)
+            )
+            [0..5]
 
         return VAbsoluteUnit
 
@@ -213,3 +210,4 @@ evalApply c p e1 e2 = evalExpr c e1 >>= \case
         , "["
         , show x
         , "]"]
+

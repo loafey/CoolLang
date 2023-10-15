@@ -48,8 +48,20 @@ build-type:         Simple
 -- Extra doc files to be distributed with the package, such as a CHANGELOG or a README.
 extra-doc-files:    CHANGELOG.md
 
+extra-source-files: 
+    src/Interpreter/FunctionLoader
+
 -- Extra source files to be distributed with the package, such as examples, or a tutorial module.
 -- extra-source-files:
+
+-- library FunctionLoader
+--     C-sources: src/Interpreter/FunctionLoader/FunctionLoader.c
+--     -- The location of the header files
+--     Include-dirs: src/Interpreter/FunctionLoader/Include
+--     -- The header files to be included
+--     Includes: FunctionLoader.h
+--     -- Header files to install
+--     Install-includes: FunctionLoader.h
 
 common warnings
     ghc-options: -Wall
@@ -90,3 +102,6 @@ executable CoolLang
 
     -- Base language which the package is written in.
     default-language: GHC2021
+
+    include-dirs: src/Interpreter/FunctionLoader/Include
+    c-sources: src/Interpreter/FunctionLoader/FunctionLoader.c

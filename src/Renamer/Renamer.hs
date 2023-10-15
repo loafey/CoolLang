@@ -8,14 +8,16 @@ module Renamer.Renamer (rename) where
 
 import           Lang.Abs
 
+import           Control.Monad        (when)
 import           Control.Monad.Except
 import           Control.Monad.State
+import           Data.Functor         (void)
 import           Data.Map             (Map)
 import qualified Data.Map             as M
 import           Data.Set             (Set)
 import qualified Data.Set             as S
+import           Debug.Trace          (trace, traceShow)
 import           Error
-import Debug.Trace (traceShow, trace)
 
 -- TODO: Add data types to base types before continuing.
 -- Renamer is currently completely unusble
@@ -60,8 +62,8 @@ addDecls :: [Def] -> Rn ()
 addDecls [] = pure ()
 addDecls (x:xs) = case x of
     DBind _ bind -> addBind bind >> addDecls xs
-    DData _ dat -> addData dat >> addDecls xs
-    DSig _ sig -> addDecls xs -- Perhaps add signatures too
+    DData _ dat  -> addData dat >> addDecls xs
+    DSig _ sig   -> addDecls xs -- Perhaps add signatures too
 
 addData :: Data -> Rn ()
 addData d = do

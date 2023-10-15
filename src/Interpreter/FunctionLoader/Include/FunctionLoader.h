@@ -1,0 +1,1 @@
+void *getLibCFunction(char *func);
