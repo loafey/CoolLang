@@ -73,6 +73,7 @@ executable CoolLang
                       Renamer.Renamer
                       Error
 
+
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
 
@@ -82,10 +83,39 @@ executable CoolLang
                       containers,
                       array,
                       either,
-                      extra
+                      extra,
+                      composition
 
     -- Directories containing source files.
     hs-source-dirs:   src
 
     -- Base language which the package is written in.
+    default-language: GHC2021
+
+Test-suite renamer-tests
+    type: exitcode-stdio-1.0
+    main-is: Renamer-tests.hs
+
+    other-modules:
+        Lang.Abs
+        Lang.ErrM
+        Lang.Skel
+        Lang.Print
+        Lang.Lex
+        Lang.Par
+        Util
+        Renamer.Renamer
+        Error
+
+    hs-source-dirs: src, test
+
+    build-depends:    base >= 4.16,
+                      mtl,
+                      containers,
+                      array,
+                      either,
+                      extra,
+                      QuickCheck,
+                      composition
+
     default-language: GHC2021

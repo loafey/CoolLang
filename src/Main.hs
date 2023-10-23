@@ -4,7 +4,7 @@ import           Control.Monad           (when)
 import           Error
 import           Lang.Par                (myLexer, pProgram)
 import           Lang.Print              (printTree)
-import           Renamer.Renamer         (rename)
+import           Renamer.Renamer
 import           System.Environment      (getArgs)
 import           System.IO               (IOMode (ReadMode), hGetContents,
                                           openFile)
@@ -20,7 +20,7 @@ main = do
     case pProgram . myLexer $ fileContent of
         Left e   -> print e
         Right ok -> do
-            case rename ok of
+            case rename mempty Fresh ok of
                 Left e -> putStrLn $ showErr e
                 Right ok -> do
                     putStrLn " -- RENAMED -- "

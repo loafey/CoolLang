@@ -1,15 +1,14 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
-{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
-module Renamer.Renamer (rename) where
+module Renamer.Renamer (rename, renameGetNames, RenameDirection(..)) where
 
 import           Lang.Abs
 
 import           Control.Monad.Except
 import           Control.Monad.State
+import           Data.Composition
 import           Data.Map             (Map)
 import qualified Data.Map             as M
 import           Data.Set             (Set)
@@ -20,25 +19,44 @@ import           Util                 (sortBindsLast)
 type Pos = BNFC'Position
 
 newtype Rn a = Rn { runRn :: ExceptT (RenameError Pos) (State Ctx) a }
-    deriving (Functor, Applicative, Monad, MonadState Ctx, MonadError (RenameError Pos))
+    deriving ( Functor
+             , Applicative
+             , Monad
+             , MonadState Ctx
+             , MonadError (RenameError Pos))
 
 data Ctx = Ctx
-    { counter      :: Int
-    , variables    :: Map Ident Ident
-    , binds        :: Set Ident
-    , tyVariables  :: Map TVar TVar
-    , baseTypes    :: Set TVar
-    , constructors :: Set Ident
+    { counter       :: Int
+    , variables     :: Map Ident Ident
+    , binds         :: Set Ident
+    , tyVariables   :: Map TVar TVar
+    , baseTypes     :: Set TVar
+    , constructors  :: Set Ident
+    , originalNames :: Map Ident Ident
+    , renameDir     :: RenameDirection
     } deriving Show
 
-emptyCtx :: Ctx
-emptyCtx = Ctx 0 mempty mempty mempty mempty mempty
+freshEmptyCtx :: Ctx
+freshEmptyCtx = Ctx 0 mempty mempty mempty mempty mempty mempty Fresh
+
+oldEmptyCtx :: Map Ident Ident -> RenameDirection -> Ctx
+oldEmptyCtx = Ctx 0 mempty mempty mempty mempty mempty
+
+data RenameDirection = Fresh | Old
+    deriving Show
 
 run :: Rn a -> Either (RenameError Pos) a
-run = flip evalState emptyCtx . runExceptT . runRn
+run = flip evalState freshEmptyCtx . runExceptT . runRn
 
-rename :: Program -> Either (RenameError Pos) Program
-rename = run . rnProgram
+renameGetNames :: Map Ident Ident -> RenameDirection -> Program -> Either (RenameError Pos) (Map Ident Ident, Program)
+renameGetNames names rd prg =
+    let
+      (program, ctx) = flip runState (oldEmptyCtx names rd) . runExceptT . runRn $ rnProgram prg
+    in
+      (originalNames ctx,) <$> program
+
+rename :: Map Ident Ident -> RenameDirection -> Program -> Either (RenameError Pos) Program
+rename = fmap snd .:. renameGetNames
 
 rnProgram :: Program -> Rn Program
 rnProgram (Program pos defs) = Program pos <$> mapM rnDef (sortBindsLast defs)
@@ -62,16 +80,16 @@ rnBind (Bind pos name expr) = do
     Bind pos name <$> rnExpr expr
 
 rnData :: Data -> Rn Data
-rnData d@(Data pos domain injections) = do
+rnData d@(Data pos domain0 injections) = do
     cleanContext
-    (name, tvars) <- isValidData domain
+    (name, tvars) <- isValidData domain0
     -- Find which two names clash and add both to error constructor
     noOverlappingVars tvars
     when (rmPosTVar name `elem` map rmPosTVar tvars) $ do
          throwError $ RnNameTypeVariableClash (hasPosition name) d name
     addBaseType name
-    domain <- rnDomain domain
-    Data pos domain <$> mapM rnInjection injections
+    domain1 <- rnDomain domain0
+    Data pos domain1 <$> mapM rnInjection injections
 
 rnInjection :: Inj -> Rn Inj
 rnInjection inj@(Inj pos name tys)
@@ -80,20 +98,9 @@ rnInjection inj@(Inj pos name tys)
 
 rnDomain :: Domain -> Rn Domain
 rnDomain (TEmpty pos ty) = TEmpty pos <$> rnType ty
-rnDomain (TAll pos tvars ty) = do
-    tvars <- mapM newTypeName tvars
-    TAll pos tvars <$> rnType ty
-
-rnTypeData :: Type -> Rn Type
-rnTypeData ty = case ty of
-    TVar pos1 name -> do
-        let name' = rmPosTVar name
-        tyvars <- gets tyVariables
-        case M.lookup name' tyvars of
-            Nothing   -> throwError $ RnUnboundTVar pos1 name
-            Just name -> pure $ TVar pos1 name
-    TApp pos ty1 ty2  -> TApp pos <$> rnType ty1 <*> rnType ty2
-    TFun pos ty1 ty2  -> TFun pos <$> rnType ty1 <*> rnType ty2
+rnDomain (TAll pos tvars0 ty) = do
+    tvars1 <- mapM newTypeName tvars0
+    TAll pos tvars1 <$> rnType ty
 
 rnExpr :: Expr -> Rn Expr
 rnExpr = \case
@@ -138,46 +145,64 @@ rnPattern seen = \case
 
 rnType :: Type -> Rn Type
 rnType ty = case ty of
-    TVar pos1 name -> do
-        let name' = rmPosTVar name
+    TVar pos1 name0 -> do
+        let name' = rmPosTVar name0
         atoms <- gets baseTypes
         tyvars <- gets tyVariables
+        dir <- gets renameDir
         if S.member name' atoms
         then pure ty
-        else case M.lookup name' tyvars of
-            Nothing   -> throwError $ RnUnboundTVar pos1 name
-            Just name -> pure $ TVar pos1 name
+        else case dir of
+            Fresh -> case M.lookup name' tyvars of
+                Nothing    -> throwError $ RnUnboundTVar pos1 name0
+                Just name1 -> pure $ TVar pos1 name1
+            Old -> do
+                ogs <- gets originalNames
+                let f (MkTVar _ x) = x
+                let g (Ident x) = x
+                case M.lookup (f name') ogs of
+                    Nothing    -> error $ "Renaming back failed as the name for '" ++ g (f name') ++ "' could not be found"
+                    Just name1 -> pure $ TVar pos1 (MkTVar Nothing name1)
     TApp pos ty1 ty2  -> TApp pos <$> rnType ty1 <*> rnType ty2
     TFun pos ty1 ty2  -> TFun pos <$> rnType ty1 <*> rnType ty2
 
 addBind :: MonadState Ctx m => Ident -> m ()
-addBind name = modify (\ctx -> ctx { binds = S.insert name ctx.binds })
+addBind name = modify (\ctx -> ctx {
+    binds = S.insert name ctx.binds
+})
 
 getBindName :: (MonadError (RenameError Pos) m, MonadState Ctx m) => Pos -> Ident -> m ()
 getBindName pos name = gets (S.member name . binds) >>= \case
     False -> throwError $ RnUnboundVar pos name
     True -> pure ()
 
-addVariable :: MonadState Ctx m => Ident -> Ident -> m ()
-addVariable old new = modify (\ctx -> ctx { variables = M.insert old new ctx.variables })
-
-addTypeVariable :: MonadState Ctx m => TVar -> TVar -> m ()
-addTypeVariable old new = modify (\ctx -> ctx { tyVariables = M.insert old new ctx.tyVariables })
-
 newVarName :: MonadState Ctx m => Ident -> m Ident
 newVarName (Ident name) = do
     i <- gets counter
-    let name' = Ident $ "$" ++ show i ++ name
+    let name' = Ident $ "$" ++ show i
     modify (\ctx -> ctx { counter = succ ctx.counter
-                        , variables = M.insert (Ident name) name' ctx.variables })
+                        , variables = M.insert (Ident name) name' ctx.variables
+                        , originalNames = M.insert name' (Ident name) ctx.originalNames })
     pure name'
 
 getVarName :: Pos -> Ident -> Rn Ident
-getVarName pos name = gets (S.member name . constructors) >>= \case
-    False -> gets (M.lookup name . variables) >>= \case
-        Nothing -> throwError $ RnUnboundVar pos name
-        Just name' -> pure name'
-    True -> pure name
+getVarName pos name = gets renameDir >>= go
+  where
+    go Fresh = gets (S.member name . constructors) >>= \case
+        False -> gets (M.lookup name . variables) >>= \case
+            Nothing -> throwError $ RnUnboundVar pos name
+            Just name' -> pure name'
+        True -> pure name
+    go Old = gets (S.member name . constructors) >>= \case
+        False -> gets (M.lookup name . originalNames) >>= \case
+            Nothing ->
+                let
+                    f (Ident x) = x
+                in
+                    error $ "Renaming back failed as the name for '" ++ f name ++ "' could not be found"
+            Just name' -> pure name'
+        True -> pure name
+
 
 newTypeName :: (MonadState Ctx m) => TVar -> m TVar
 newTypeName tvar@(MkTVar _ (Ident name)) = do
@@ -187,34 +212,8 @@ newTypeName tvar@(MkTVar _ (Ident name)) = do
                         , tyVariables = M.insert (rmPosTVar tvar) name' ctx.tyVariables })
     pure name'
 
-getTypeName :: TVar -> Rn TVar
-getTypeName name =
-    let name' = rmPosTVar name
-    in gets (S.member name' . baseTypes) >>= \case
-           False -> gets (M.lookup name' . tyVariables) >>= \case
-               Nothing -> throwError $ RnUnboundTVar (hasPosition name) name
-               Just name -> pure name
-           True -> pure name
-
 addBaseType :: MonadState Ctx m => TVar -> m ()
 addBaseType name = modify (\ctx -> ctx { baseTypes = S.insert (rmPosTVar name) ctx.baseTypes })
-
-getDataTypeName :: MonadError (RenameError Pos) m => Data -> m TVar
-getDataTypeName (Data _ domain _) = case domain of
-    TEmpty _ ty -> go ty
-    TAll _ _ ty -> go ty
-  where
-    go ty = case ty of
-        TVar _ name            -> pure name
-        TApp _ (TVar _ name) _ -> pure name
-        TApp pos _ _           -> throwError $ RnBadDataType pos ty
-        TFun pos _ _           -> throwError $ RnBadDataType pos ty
-
-getTVars :: Type -> [TVar]
-getTVars t = case t of
-    TVar _ tvar    -> [tvar]
-    TApp _ ty1 ty2 -> getTVars ty1 ++ getTVars ty2
-    TFun _ ty1 ty2 -> getTVars ty1 ++ getTVars ty2
 
 addInjection :: MonadState Ctx m => Inj -> m ()
 addInjection (Inj _ name _) = modify (\ctx -> ctx { constructors = S.insert name ctx.constructors })
@@ -228,16 +227,16 @@ isValidData domain = case domain of
     TAll _ _ ty -> go ty
   where
     go :: (MonadError (RenameError Pos) m) => Type -> m (TVar, [TVar])
-    go ty = case ty of
+    go ty0 = case ty0 of
         TVar _ name          -> pure (name, [])
-        TApp _ (TVar _ name) ty -> do
-            xs <- go' ty
+        TApp _ (TVar _ name) ty1 -> do
+            xs <- go' ty1
             pure (name, xs)
         TApp _ ty1 ty2 -> do
             (name, tvars) <- go ty1
             tvars' <- go' ty2
             pure (name, tvars ++ tvars')
-        _                    -> throwError $ RnBadDataType (hasPosition ty) ty
+        _                    -> throwError $ RnBadDataType (hasPosition ty0) ty0
     go' :: (MonadError (RenameError Pos) m) => Type -> m [TVar]
     go' ty = case ty of
         TVar _ tvar -> pure [tvar]
@@ -250,17 +249,12 @@ isValidData domain = case domain of
 noOverlappingVars :: MonadError (RenameError Pos) m => [TVar] -> m ()
 noOverlappingVars [] = pure ()
 noOverlappingVars (x:xs)
-  | rmPosTVar x `elem` map rmPosTVar xs = throwError $ RnDuplicateParameterName (hasPosition x) x
+  | rmPosTVar x `elem` map rmPosTVar xs
+    = throwError $ RnDuplicateParameterName (hasPosition x) x
   | otherwise = noOverlappingVars xs
-
-rmPosType :: Type -> Type
-rmPosType = fmap (const Nothing)
 
 rmPosTVar :: TVar -> TVar
 rmPosTVar = fmap (const Nothing)
-
-rmPosInj :: Inj -> Inj
-rmPosInj = fmap (const Nothing)
 
 cleanContext :: Rn ()
 cleanContext = modify (\ctx -> ctx { tyVariables = mempty, variables = mempty })
