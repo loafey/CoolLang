@@ -4,30 +4,35 @@
     flake-parts.url = "github:hercules-ci/flake-parts";
     haskell-flake.url = "github:srid/haskell-flake";
   };
-  outputs = inputs@{ self, nixpkgs, flake-parts, ... }:
+  outputs = inputs@{ self, nixpkgs, flake-parts, haskell-flake, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = nixpkgs.lib.systems.flakeExposed;
-      imports = [ inputs.haskell-flake.flakeModule ];
+      imports = [
+          inputs.haskell-flake.flakeModule
+      ];
 
       perSystem = { self', system, lib, config, pkgs, ... }: {
         haskellProjects.default = {
-           basePackages = pkgs.haskellPackages;
            devShell = {
             enable = true;
+
             tools = hp: {
                 BNFC = hp.BNFC;
                 alex = hp.alex;
-                fourmolu = hp.fourmolu;
+                stylish = hp.stylish-haskell;
                 ghcid = hp.ghcid;
                 happy = hp.happy;
             };
+
             hlsCheck.enable = true;
            };
+
            autoWire = [
                "packages"
                "apps"
                "checks"
            ];
+
         };
         devShells.default = pkgs.mkShell {
             name = "CoolLang development shell";

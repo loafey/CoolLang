@@ -4,3 +4,5 @@ src/Makefile
 .vscode
 Dump
 Session.vim
+Compilation
+cabal.project.local*
