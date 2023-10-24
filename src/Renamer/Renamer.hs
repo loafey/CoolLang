@@ -8,13 +8,14 @@ import           Lang.Abs
 
 import           Control.Monad.Except
 import           Control.Monad.State
+import           Data.Bifunctor       (second)
 import           Data.Composition
 import           Data.Map             (Map)
 import qualified Data.Map             as M
 import           Data.Set             (Set)
 import qualified Data.Set             as S
 import           Error
-import           Util                 (sortBindsLast)
+import           Util                 (sequenceFst, sortBindsLast)
 
 type Pos = BNFC'Position
 
@@ -36,27 +37,29 @@ data Ctx = Ctx
     , renameDir     :: RenameDirection
     } deriving Show
 
-freshEmptyCtx :: Ctx
-freshEmptyCtx = Ctx 0 mempty mempty mempty mempty mempty mempty Fresh
-
-oldEmptyCtx :: Map Ident Ident -> RenameDirection -> Ctx
-oldEmptyCtx = Ctx 0 mempty mempty mempty mempty mempty
+createEmptyCtx :: Map Ident Ident -> RenameDirection -> Ctx
+createEmptyCtx = Ctx 0 mempty mempty mempty mempty mempty
 
 data RenameDirection = Fresh | Old
     deriving Show
 
-run :: Rn a -> Either (RenameError Pos) a
-run = flip evalState freshEmptyCtx . runExceptT . runRn
+renameGetNames :: Map Ident Ident
+               -> RenameDirection
+               -> Program
+               -> Either (RenameError Pos) (Program, Map Ident Ident)
+renameGetNames names rd prg
+    = sequenceFst
+    . second originalNames
+    . flip runState (createEmptyCtx names rd)
+    . runExceptT
+    . runRn
+    $ rnProgram prg
 
-renameGetNames :: Map Ident Ident -> RenameDirection -> Program -> Either (RenameError Pos) (Map Ident Ident, Program)
-renameGetNames names rd prg =
-    let
-      (program, ctx) = flip runState (oldEmptyCtx names rd) . runExceptT . runRn $ rnProgram prg
-    in
-      (originalNames ctx,) <$> program
-
-rename :: Map Ident Ident -> RenameDirection -> Program -> Either (RenameError Pos) Program
-rename = fmap snd .:. renameGetNames
+rename :: Map Ident Ident
+       -> RenameDirection
+       -> Program
+       -> Either (RenameError Pos) Program
+rename = fmap fst .:. renameGetNames
 
 rnProgram :: Program -> Rn Program
 rnProgram (Program pos defs) = Program pos <$> mapM rnDef (sortBindsLast defs)
@@ -107,7 +110,8 @@ rnExpr = \case
     EPat pos ident -> EPat pos <$> getVarName pos ident
     ELit pos lit -> pure $ ELit pos lit
     EApp pos e1 e2 -> EApp pos <$> rnExpr e1 <*> rnExpr e2
-    EAppExplicit pos e1 tyApp e2 -> EAppExplicit pos <$> rnExpr e1 <*> rnType tyApp <*> rnExpr e2
+    EAppExplicit pos e1 tyApp e2
+        -> EAppExplicit pos <$> rnExpr e1 <*> rnType tyApp <*> rnExpr e2
     ELet pos ident e1 e2 -> do
         name' <- newVarName ident
         ELet pos name' <$> rnExpr e1 <*> rnExpr e2
@@ -122,7 +126,8 @@ rnExpr = \case
     EAnn pos expr ty -> EAnn pos <$> rnExpr expr <*> rnType ty
 
 rnBranch :: Branch -> Rn Branch
-rnBranch (Branch pos pat expr) = Branch pos <$> rnPattern mempty pat <*> rnExpr expr
+rnBranch (Branch pos pat expr)
+    = Branch pos <$> rnPattern mempty pat <*> rnExpr expr
 
 rnPattern :: Set Ident -> Pattern -> Rn Pattern
 rnPattern seen = \case
@@ -141,28 +146,29 @@ rnPattern seen = \case
         b <- isConstructor name
         if b
         then PInj pos name <$> mapM (rnPattern (S.insert name seen)) pats
-        else PInj pos <$> newVarName name <*> mapM (rnPattern (S.insert name seen)) pats
+        else PInj pos <$> newVarName name
+                      <*> mapM (rnPattern (S.insert name seen)) pats
 
 rnType :: Type -> Rn Type
 rnType ty = case ty of
     TVar pos1 name0 -> do
         let name' = rmPosTVar name0
-        atoms <- gets baseTypes
+        isBaseType <- gets (S.member name' . baseTypes)
         tyvars <- gets tyVariables
-        dir <- gets renameDir
-        if S.member name' atoms
+        if isBaseType
         then pure ty
-        else case dir of
-            Fresh -> case M.lookup name' tyvars of
-                Nothing    -> throwError $ RnUnboundTVar pos1 name0
-                Just name1 -> pure $ TVar pos1 name1
-            Old -> do
-                ogs <- gets originalNames
-                let f (MkTVar _ x) = x
-                let g (Ident x) = x
-                case M.lookup (f name') ogs of
-                    Nothing    -> error $ "Renaming back failed as the name for '" ++ g (f name') ++ "' could not be found"
-                    Just name1 -> pure $ TVar pos1 (MkTVar Nothing name1)
+        else
+            gets renameDir >>= \case
+                Fresh -> case M.lookup name' tyvars of
+                    Nothing    -> throwError $ RnUnboundTVar pos1 name0
+                    Just name1 -> pure $ TVar pos1 name1
+                Old -> do
+                    ogs <- gets originalNames
+                    let f (MkTVar _ x) = x
+                    let g (Ident x) = x
+                    case M.lookup (f name') ogs of
+                        Nothing    -> (crash . g . f) name'
+                        Just name1 -> pure $ TVar pos1 (MkTVar Nothing name1)
     TApp pos ty1 ty2  -> TApp pos <$> rnType ty1 <*> rnType ty2
     TFun pos ty1 ty2  -> TFun pos <$> rnType ty1 <*> rnType ty2
 
@@ -171,7 +177,8 @@ addBind name = modify (\ctx -> ctx {
     binds = S.insert name ctx.binds
 })
 
-getBindName :: (MonadError (RenameError Pos) m, MonadState Ctx m) => Pos -> Ident -> m ()
+getBindName :: (MonadError (RenameError Pos) m, MonadState Ctx m)
+            => Pos -> Ident -> m ()
 getBindName pos name = gets (S.member name . binds) >>= \case
     False -> throwError $ RnUnboundVar pos name
     True -> pure ()
@@ -180,9 +187,11 @@ newVarName :: MonadState Ctx m => Ident -> m Ident
 newVarName (Ident name) = do
     i <- gets counter
     let name' = Ident $ "$" ++ show i
-    modify (\ctx -> ctx { counter = succ ctx.counter
-                        , variables = M.insert (Ident name) name' ctx.variables
-                        , originalNames = M.insert name' (Ident name) ctx.originalNames })
+    modify (\ctx -> ctx {
+        counter = succ ctx.counter,
+        variables = M.insert (Ident name) name' ctx.variables,
+        originalNames = M.insert name' (Ident name) ctx.originalNames
+    })
     pure name'
 
 getVarName :: Pos -> Ident -> Rn Ident
@@ -195,11 +204,7 @@ getVarName pos name = gets renameDir >>= go
         True -> pure name
     go Old = gets (S.member name . constructors) >>= \case
         False -> gets (M.lookup name . originalNames) >>= \case
-            Nothing ->
-                let
-                    f (Ident x) = x
-                in
-                    error $ "Renaming back failed as the name for '" ++ f name ++ "' could not be found"
+            Nothing -> crash $ unwrapIdent name
             Just name' -> pure name'
         True -> pure name
 
@@ -208,15 +213,21 @@ newTypeName :: (MonadState Ctx m) => TVar -> m TVar
 newTypeName tvar@(MkTVar _ (Ident name)) = do
     i <- gets counter
     let name' = MkTVar Nothing $ Ident $ "$" ++ show i ++ name
-    modify (\ctx -> ctx { counter = succ ctx.counter
-                        , tyVariables = M.insert (rmPosTVar tvar) name' ctx.tyVariables })
+    modify (\ctx -> ctx {
+        counter = succ ctx.counter ,
+        tyVariables = M.insert (rmPosTVar tvar) name' ctx.tyVariables
+    })
     pure name'
 
 addBaseType :: MonadState Ctx m => TVar -> m ()
-addBaseType name = modify (\ctx -> ctx { baseTypes = S.insert (rmPosTVar name) ctx.baseTypes })
+addBaseType name = modify (\ctx -> ctx {
+    baseTypes = S.insert (rmPosTVar name) ctx.baseTypes
+})
 
 addInjection :: MonadState Ctx m => Inj -> m ()
-addInjection (Inj _ name _) = modify (\ctx -> ctx { constructors = S.insert name ctx.constructors })
+addInjection (Inj _ name _) = modify (\ctx -> ctx {
+    constructors = S.insert name ctx.constructors
+})
 
 isConstructor :: Ident -> Rn Bool
 isConstructor ident = gets (S.member ident . constructors)
@@ -258,3 +269,12 @@ rmPosTVar = fmap (const Nothing)
 
 cleanContext :: Rn ()
 cleanContext = modify (\ctx -> ctx { tyVariables = mempty, variables = mempty })
+
+crash :: String -> a
+crash name =
+    error $ unwords [ "Renaming back failed as the name for '"
+                    , name
+                    , "' could not be found"]
+
+unwrapIdent :: Ident -> String
+unwrapIdent (Ident x) = x

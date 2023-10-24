@@ -1,11 +1,6 @@
-module Util (
-    whenErr,
-    whenOk,
-    todo,
-    sortBindsLast
-) where
+module Util where
 
-import           Data.List.Extra (sort, sortBy)
+import           Data.List.Extra (sortBy)
 import           Lang.Abs
 import           Lang.ErrM       (Err)
 
@@ -32,3 +27,13 @@ defOrdering d1 d2 = case (d1, d2) of
     (_, DBind _ _) -> LT
     (DSig _ _, DData _ _) -> GT
     (DData _ _, DSig _ _) -> LT
+
+sequenceFst :: Monad m => (m a, b) -> m (a, b)
+sequenceFst (ma, b) = do
+    a <- ma
+    pure (a, b)
+
+sequenceSnd :: Monad m => (a, m b) -> m (a, b)
+sequenceSnd (a, mb) = do
+    b <- mb
+    pure (a, b)
